@@ -1112,7 +1112,7 @@ export default class MemosSync extends Plugin {
         let options = [
           {
             value: SYNC_MAP.block,
-            text: "同步至 Daily Notes"
+            text: "同步至 Daily Note"
           },
           {
             value: SYNC_MAP.page,
