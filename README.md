@@ -3,6 +3,8 @@
 
 [中文版](./README_zh_CN.md)
 
+测试推送
+
 > Consistent with [siyuan/plugin-sample](https://github.com/siyuan-note/plugin-sample) [v0.2.8](https://github.com/siyuan-note/plugin-sample/tree/v0.2.8)
 
 
@@ -27,7 +29,7 @@
         >>> pnpm run make-link
         > plugin-sample-vite@0.0.3 make-link H:\SrcCode\开源项目\plugin-sample-vite
         > node  --no-warnings ./scripts/make_dev_link.js
-
+        
         "targetDir" is empty, try to get SiYuan directory automatically....
         Got 2 SiYuan workspaces
         [0] H:\Media\SiYuan
@@ -43,7 +45,7 @@
       >>> pnpm run make-link
       > plugin-sample-vite-svelte@0.0.1 make-link H:\SrcCode\plugin-sample-vite-svelte
       > node ./scripts/make_dev_link.js
-
+      
       Done! Created symlink H:/SiYuanDevSpace/data/plugins/plugin-sample-vite-svelte
       ```
 5. **Create development symbolic links by using environment variable**
