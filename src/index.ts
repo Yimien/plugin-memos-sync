@@ -561,8 +561,8 @@ export default class MemosSync extends Plugin {
     let title = memoObj.title;
 
     // 标题写入
-    let content = `* ${title}`;
-    let response = await api.appendBlock(pageId, content);
+    let contentTitle = `* ${title}`;
+    let response = await api.appendBlock(pageId, contentTitle);
 
     if (!api.isOK(response)) {
       return;
@@ -577,6 +577,7 @@ export default class MemosSync extends Plugin {
 
     // 内容写入
     let childId = childResponse.data[0].id;
+    let content = memoObj.content;
     await api.appendBlock(childId, content);
     return response;
   }
@@ -755,7 +756,7 @@ export default class MemosSync extends Plugin {
     let isReady = await this.checkBeforeSync();
     let memos = await this.getLatestMemos();
     if (isReady && memos.addList.length > 0) {
-      this.topBarElement.innerHTML = getSvgHtml("new");
+      this.topBarElement.innerHTML = getSvgHtml("new", this.isMobile);
     }
   }
 
@@ -796,7 +797,7 @@ export default class MemosSync extends Plugin {
     this.syncing = true;  // 同步标志
 
     try {
-      this.topBarElement.innerHTML = getSvgHtml("refresh")  // 刷新图标
+      this.topBarElement.innerHTML = getSvgHtml("refresh", this.isMobile)  // 刷新图标
 
       await this.initData();  // 初始化数据
       let configData = this.data[STORAGE_NAME]; // 读取配置
@@ -808,7 +809,7 @@ export default class MemosSync extends Plugin {
       if (memos.addList.length == 0) {
         await api.pushMsg("暂无新数据！");
         this.syncing = false;
-        this.topBarElement.innerHTML = getSvgHtml("memos");
+        this.topBarElement.innerHTML = getSvgHtml("memos", this.isMobile);
         return;
       }else{
         await api.pushMsg("同步中，请稍候...");
@@ -831,7 +832,7 @@ export default class MemosSync extends Plugin {
       }, 1000)
 
       // 同步完成
-      this.topBarElement.innerHTML = getSvgHtml("memos");
+      this.topBarElement.innerHTML = getSvgHtml("memos", this.isMobile);
       await api.pushMsg("同步完成！")
     } catch (error) {
       await api.pushErrMsg("同步失败！");
@@ -871,6 +872,16 @@ export default class MemosSync extends Plugin {
    * 初始化数据
    */
   async initData() {
+    
+    // 获取本地配置
+    let conResponse = await api.getLocalStorage();
+    this.siyuanStorage = conResponse["data"];
+
+    const frontEnd = getFrontend();
+    this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+
+    
+
     this.data[STORAGE_NAME] = await this.loadData(STORAGE_NAME) || {};
 
     let defaultConfig = {
@@ -935,7 +946,6 @@ export default class MemosSync extends Plugin {
       await api.pushErrMsg("未配置服务器路径或授权码！")
       return false;
     }
-
     try {
       let service = new memosApi(baseUrl, accessToken);
 
@@ -981,24 +991,22 @@ export default class MemosSync extends Plugin {
   async eventBusHandler(detail) {
     await this.checkNew() // 检查 Memos 是否有新数据
   }
-
+  
   async onload() {
-    // 获取本地配置
-    let conResponse = await api.getLocalStorage();
-    this.siyuanStorage = conResponse["data"];
+    
 
     // 初始化配置
     await this.initData();
 
-    const frontEnd = getFrontend();
-    this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+    
 
     onSyncEndEvent = this.eventBusHandler.bind(this);
     this.eventBus.on("sync-end", onSyncEndEvent);
 
     //顶栏图标
+    let icon = getSvgHtml('memos', this.isMobile);
     this.topBarElement = this.addTopBar({
-      icon: getSvgHtml('memos'),
+      icon: icon,
       title: "Memos同步",
       position: "right",
       callback: await this.runSync.bind(this)
