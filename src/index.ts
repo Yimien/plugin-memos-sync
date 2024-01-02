@@ -1,709 +1,1208 @@
+import { SiyuanApi as api } from './api/siyuanApi';
+import { MemosApi as memosApi } from './api/memosApi';
+import { print, getAttrList, getSvgHtml, isObjectEmpty } from "./utils";
+import { IGroupedData } from './interface';
 import {
-    Plugin,
-    showMessage,
-    confirm,
-    Dialog,
-    Menu,
-    openTab,
-    adaptHotkey,
-    getFrontend,
-    getBackend,
-    IModel,
-    Protyle,
-    openWindow,
-    IOperation,
-    Constants
+  Plugin,
+  Setting,
+  getFrontend
 } from "siyuan";
 import "@/index.scss";
+import moment from "moment";
 
+// 固化数据
+const STORAGE_NAME = "memos-sync-config"; // 配置名称
+const MEMOS_ASSETS_DIR = "assets/memos";  // 文件存储路径
+const FORMAT = {
+  date: 'YYYY-MM-DD',
+  datetime: 'YYYY-MM-DD HH:mm:ss'
+}
+// 图标
 
-import { SettingUtils } from "./libs/setting-utils";
-const STORAGE_NAME = "menu-config";
-const TAB_TYPE = "custom_tab";
-const DOCK_TYPE = "dock_tab";
+// 同步保存方案
+const SYNC_MAP = {
+  block: "0",
+  page: "1"
+}
+// 引用处理方案
+const MARK_MAP = {
+  blockRef: "0",
+  blockEmbed: "1"
+}
 
-export default class PluginSample extends Plugin {
+let onSyncEndEvent: EventListener;
 
-    private customTab: () => IModel;
-    private isMobile: boolean;
-    private blockIconEventBindThis = this.blockIconEvent.bind(this);
-    private settingUtils: SettingUtils;
+export default class MemosSync extends Plugin {
+  private isMobile: boolean;
+  private siyuanStorage;
+  private topBarElement;
+  private syncing: boolean = false;
+  private memosService;
+  private nowNotebooks;
 
-    async onload() {
-        this.data[STORAGE_NAME] = { readonlyText: "Readonly" };
+  /**
+   * 同步前检查
+   * @returns {boolean}
+   */
+  async checkBeforeSync() {
+    let requiredIsOk = await this.checkRequired();
+    let tokenIsOk = await this.checkAccessToken();
+    return (requiredIsOk && tokenIsOk) ? true : false;
+  }
 
-        console.log("loading plugin-sample", this.i18n);
+  /**
+   * 获取最新记录，以上次同步时间为起点
+   * @returns
+   */
+  async getLatestMemos() {
+    // 读取配置
+    let configData = this.data[STORAGE_NAME];
 
-        const frontEnd = getFrontend();
-        this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-        // 图标的制作参见帮助文档
-        this.addIcons(`<symbol id="iconFace" viewBox="0 0 32 32">
-<path d="M13.667 17.333c0 0.92-0.747 1.667-1.667 1.667s-1.667-0.747-1.667-1.667 0.747-1.667 1.667-1.667 1.667 0.747 1.667 1.667zM20 15.667c-0.92 0-1.667 0.747-1.667 1.667s0.747 1.667 1.667 1.667 1.667-0.747 1.667-1.667-0.747-1.667-1.667-1.667zM29.333 16c0 7.36-5.973 13.333-13.333 13.333s-13.333-5.973-13.333-13.333 5.973-13.333 13.333-13.333 13.333 5.973 13.333 13.333zM14.213 5.493c1.867 3.093 5.253 5.173 9.12 5.173 0.613 0 1.213-0.067 1.787-0.16-1.867-3.093-5.253-5.173-9.12-5.173-0.613 0-1.213 0.067-1.787 0.16zM5.893 12.627c2.28-1.293 4.040-3.4 4.88-5.92-2.28 1.293-4.040 3.4-4.88 5.92zM26.667 16c0-1.040-0.16-2.040-0.44-2.987-0.933 0.2-1.893 0.32-2.893 0.32-4.173 0-7.893-1.92-10.347-4.92-1.4 3.413-4.187 6.093-7.653 7.4 0.013 0.053 0 0.12 0 0.187 0 5.88 4.787 10.667 10.667 10.667s10.667-4.787 10.667-10.667z"></path>
-</symbol>
-<symbol id="iconSaving" viewBox="0 0 32 32">
-<path d="M20 13.333c0-0.733 0.6-1.333 1.333-1.333s1.333 0.6 1.333 1.333c0 0.733-0.6 1.333-1.333 1.333s-1.333-0.6-1.333-1.333zM10.667 12h6.667v-2.667h-6.667v2.667zM29.333 10v9.293l-3.76 1.253-2.24 7.453h-7.333v-2.667h-2.667v2.667h-7.333c0 0-3.333-11.28-3.333-15.333s3.28-7.333 7.333-7.333h6.667c1.213-1.613 3.147-2.667 5.333-2.667 1.107 0 2 0.893 2 2 0 0.28-0.053 0.533-0.16 0.773-0.187 0.453-0.347 0.973-0.427 1.533l3.027 3.027h2.893zM26.667 12.667h-1.333l-4.667-4.667c0-0.867 0.12-1.72 0.347-2.547-1.293 0.333-2.347 1.293-2.787 2.547h-8.227c-2.573 0-4.667 2.093-4.667 4.667 0 2.507 1.627 8.867 2.68 12.667h2.653v-2.667h8v2.667h2.68l2.067-6.867 3.253-1.093v-4.707z"></path>
-</symbol>`);
+    // 获取上次同步时间
+    let lastSyncTime = configData.lastSyncTime;
+    const today = new Date();
+    let latest_updated = moment(lastSyncTime, FORMAT.datetime, true).isValid()
+      ? moment(lastSyncTime, FORMAT.datetime).toDate()
+      : moment(today, FORMAT.datetime).toDate()
 
-        const topBarElement = this.addTopBar({
-            icon: "iconFace",
-            title: this.i18n.addTopBarIcon,
-            position: "right",
-            callback: () => {
-                if (this.isMobile) {
-                    this.addMenu();
-                } else {
-                    let rect = topBarElement.getBoundingClientRect();
-                    // 如果被隐藏，则使用更多按钮
-                    if (rect.width === 0) {
-                        rect = document.querySelector("#barMore").getBoundingClientRect();
-                    }
-                    if (rect.width === 0) {
-                        rect = document.querySelector("#barPlugins").getBoundingClientRect();
-                    }
-                    this.addMenu(rect);
-                }
-            }
-        });
+    // 获取上次同步时间戳
+    let latest_updated_at_timestamp = moment(latest_updated).unix();
 
-        const statusIconTemp = document.createElement("template");
-        statusIconTemp.innerHTML = `<div class="toolbar__item ariaLabel" aria-label="Remove plugin-sample Data">
-    <svg>
-        <use xlink:href="#iconTrashcan"></use>
-    </svg>
-</div>`;
-        statusIconTemp.content.firstElementChild.addEventListener("click", () => {
-            confirm("⚠️", this.i18n.confirmRemove.replace("${name}", this.name), () => {
-                this.removeData(STORAGE_NAME).then(() => {
-                    this.data[STORAGE_NAME] = { readonlyText: "Readonly" };
-                    showMessage(`[${this.name}]: ${this.i18n.removedData}`);
-                });
-            });
-        });
-        this.addStatusBar({
-            element: statusIconTemp.content.firstElementChild as HTMLElement,
-        });
+    // 返回的数据结构
+    let result = {
+      addList: [],
+      deleteList: []
+    };
 
-        this.customTab = this.addTab({
-            type: TAB_TYPE,
-            init() {
-                this.element.innerHTML = '<p>Hello</p>'
-            }
-        });
+    // 限制获取条数
+    const LIMIT = 200;
+    // 偏移
+    let offset = 0;
 
-        this.addCommand({
-            langKey: "showDialog",
-            hotkey: "⇧⌘O",
-            callback: () => {
-                this.showDialog();
-            },
-            fileTreeCallback: (file: any) => {
-                console.log(file, "fileTreeCallback");
-            },
-            editorCallback: (protyle: any) => {
-                console.log(protyle, "editorCallback");
-            },
-            dockCallback: (element: HTMLElement) => {
-                console.log(element, "dockCallback");
-            },
-        });
-        this.addCommand({
-            langKey: "getTab",
-            hotkey: "⇧⌘M",
-            globalCallback: () => {
-                console.log(this.getOpenedTab());
-            },
-        });
-
-        this.addDock({
-            config: {
-                position: "LeftBottom",
-                size: { width: 200, height: 0 },
-                icon: "iconSaving",
-                title: "Custom Dock",
-            },
-            data: {
-                text: "This is my custom dock"
-            },
-            type: DOCK_TYPE,
-            resize() {
-                console.log(DOCK_TYPE + " resize");
-            },
-            init() {
-                this.element.innerHTML = `<div class="fn__flex-1 fn__flex-column">
-    <div class="block__icons">
-        <div class="block__logo">
-            <svg><use xlink:href="#iconEmoji"></use></svg>
-            Custom Dock
-        </div>
-        <span class="fn__flex-1 fn__space"></span>
-        <span data-type="min" class="block__icon b3-tooltips b3-tooltips__sw" aria-label="Min ${adaptHotkey("⌘W")}"><svg><use xlink:href="#iconMin"></use></svg></span>
-    </div>
-    <div class="fn__flex-1 plugin-sample__custom-dock">
-        ${this.data.text}
-    </div>
-</div>`;
-            },
-            destroy() {
-                console.log("destroy dock:", DOCK_TYPE);
-            }
-        });
-
-        this.settingUtils = new SettingUtils(this, STORAGE_NAME);
-        this.settingUtils.addItem({
-            key: "Input",
-            value: "",
-            type: "textinput",
-            title: "Readonly text",
-            description: "Input description",
-        });
-        this.settingUtils.addItem({
-            key: "InputArea",
-            value: "",
-            type: "textarea",
-            title: "Readonly text",
-            description: "Input description",
-        });
-        this.settingUtils.addItem({
-            key: "Check",
-            value: true,
-            type: "checkbox",
-            title: "Checkbox text",
-            description: "Check description",
-        });
-        this.settingUtils.addItem({
-            key: "Select",
-            value: 1,
-            type: "select",
-            title: "Readonly text",
-            description: "Select description",
-            options: {
-                1: "Option 1",
-                2: "Option 2"
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Slider",
-            value: 50,
-            type: "slider",
-            title: "Slider text",
-            description: "Slider description",
-            slider: {
-                min: 0,
-                max: 100,
-                step: 1,
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Btn",
-            value: "",
-            type: "button",
-            title: "Button",
-            description: "Button description",
-            button: {
-                label: "Button",
-                callback: () => {
-                    showMessage("Button clicked");
-                }
-            }
-        });
-
-        this.protyleSlash = [{
-            filter: ["insert emoji 😊", "插入表情 😊", "crbqwx"],
-            html: `<div class="b3-list-item__first"><span class="b3-list-item__text">${this.i18n.insertEmoji}</span><span class="b3-list-item__meta">😊</span></div>`,
-            id: "insertEmoji",
-            callback(protyle: Protyle) {
-                protyle.insert("😊");
-            }
-        }];
-
-        console.log(this.i18n.helloPlugin);
-    }
-
-    onLayoutReady() {
-        // this.loadData(STORAGE_NAME);
-        this.settingUtils.load();
-        console.log(`frontend: ${getFrontend()}; backend: ${getBackend()}`);
-    }
-
-    async onunload() {
-        console.log(this.i18n.byePlugin);
-        await this.settingUtils.save();
-        showMessage("Goodbye SiYuan Plugin");
-        console.log("onunload");
-    }
-
-    private eventBusPaste(event: any) {
-        // 如果需异步处理请调用 preventDefault， 否则会进行默认处理
-        event.preventDefault();
-        // 如果使用了 preventDefault，必须调用 resolve，否则程序会卡死
-        event.detail.resolve({
-            textPlain: event.detail.textPlain.trim(),
-        });
-    }
-
-    private eventBusLog({ detail }: any) {
-        console.log(detail);
-    }
-
-    private blockIconEvent({ detail }: any) {
-        detail.menu.addItem({
-            iconHTML: "",
-            label: this.i18n.removeSpace,
-            click: () => {
-                const doOperations: IOperation[] = [];
-                detail.blockElements.forEach((item: HTMLElement) => {
-                    const editElement = item.querySelector('[contenteditable="true"]');
-                    if (editElement) {
-                        editElement.textContent = editElement.textContent.replace(/ /g, "");
-                        doOperations.push({
-                            id: item.dataset.nodeId,
-                            data: item.outerHTML,
-                            action: "update"
-                        });
-                    }
-                });
-                detail.protyle.getInstance().transaction(doOperations);
-            }
-        });
-    }
-
-    private showDialog() {
-        const dialog = new Dialog({
-            title: `SiYuan ${Constants.SIYUAN_VERSION}`,
-            content: `<div class="b3-dialog__content">
-    <div>appId:</div>
-    <div class="fn__hr"></div>
-    <div class="plugin-sample__time">${this.app?.appId}</div>
-    <div class="fn__hr"></div>
-    <div class="fn__hr"></div>
-    <div>API demo:</div>
-    <div class="fn__hr"></div>
-    <div class="plugin-sample__time">System current time: <span id="time"></span></div>
-    <div class="fn__hr"></div>
-    <div class="fn__hr"></div>
-    <div>Protyle demo:</div>
-    <div class="fn__hr"></div>
-    <div id="protyle" style="height: 360px;"></div>
-</div>`,
-            width: this.isMobile ? "92vw" : "560px",
-            height: "540px",
-        });
-        new Protyle(this.app, dialog.element.querySelector("#protyle"), {
-            blockId: "20200812220555-lj3enxa",
-        });
-        fetchPost("/api/system/currentTime", {}, (response) => {
-            dialog.element.querySelector("#time").innerHTML = new Date(response.data).toString();
-        });
-    }
-
-    private addMenu(rect?: DOMRect) {
-        const menu = new Menu("topBarSample", () => {
-            console.log(this.i18n.byeMenu);
-        });
-        menu.addItem({
-            icon: "iconInfo",
-            label: "Dialog(open help first)",
-            accelerator: this.commands[0].customHotkey,
-            click: () => {
-                this.showDialog();
-            }
-        });
-        if (!this.isMobile) {
-            menu.addItem({
-                icon: "iconFace",
-                label: "Open Custom Tab",
-                click: () => {
-                    const tab = openTab({
-                        app: this.app,
-                        custom: {
-                            icon: "iconFace",
-                            title: "Custom Tab",
-                            data: {
-                                text: "This is my custom tab",
-                            },
-                            id: this.name + TAB_TYPE
-                        },
-                    });
-                    console.log(tab);
-                }
-            });
-            menu.addItem({
-                icon: "iconImage",
-                label: "Open Asset Tab(open help first)",
-                click: () => {
-                    const tab = openTab({
-                        app: this.app,
-                        asset: {
-                            path: "assets/paragraph-20210512165953-ag1nib4.svg"
-                        }
-                    });
-                    console.log(tab);
-                }
-            });
-            menu.addItem({
-                icon: "iconFile",
-                label: "Open Doc Tab(open help first)",
-                click: async () => {
-                    const tab = await openTab({
-                        app: this.app,
-                        doc: {
-                            id: "20200812220555-lj3enxa",
-                        }
-                    });
-                    console.log(tab);
-                }
-            });
-            menu.addItem({
-                icon: "iconSearch",
-                label: "Open Search Tab",
-                click: () => {
-                    const tab = openTab({
-                        app: this.app,
-                        search: {
-                            k: "SiYuan"
-                        }
-                    });
-                    console.log(tab);
-                }
-            });
-            menu.addItem({
-                icon: "iconRiffCard",
-                label: "Open Card Tab",
-                click: () => {
-                    const tab = openTab({
-                        app: this.app,
-                        card: {
-                            type: "all"
-                        }
-                    });
-                    console.log(tab);
-                }
-            });
-            menu.addItem({
-                icon: "iconLayout",
-                label: "Open Float Layer(open help first)",
-                click: () => {
-                    this.addFloatLayer({
-                        ids: ["20210428212840-8rqwn5o", "20201225220955-l154bn4"],
-                        defIds: ["20230415111858-vgohvf3", "20200813131152-0wk5akh"],
-                        x: window.innerWidth - 768 - 120,
-                        y: 32
-                    });
-                }
-            });
-            menu.addItem({
-                icon: "iconOpenWindow",
-                label: "Open Doc Window(open help first)",
-                click: () => {
-                    openWindow({
-                        doc: {id: "20200812220555-lj3enxa"}
-                    });
-                }
-            });
+    while (true) {
+      try {
+        let param = {
+          limit: `${LIMIT}`,
+          offset: `${offset}`,
+          rowStatus: 'NORMAL'
         }
-        menu.addItem({
-            icon: "iconScrollHoriz",
-            label: "Event Bus",
-            type: "submenu",
-            submenu: [{
-                icon: "iconSelect",
-                label: "On ws-main",
-                click: () => {
-                    this.eventBus.on("ws-main", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off ws-main",
-                click: () => {
-                    this.eventBus.off("ws-main", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On click-blockicon",
-                click: () => {
-                    this.eventBus.on("click-blockicon", this.blockIconEventBindThis);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off click-blockicon",
-                click: () => {
-                    this.eventBus.off("click-blockicon", this.blockIconEventBindThis);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On click-pdf",
-                click: () => {
-                    this.eventBus.on("click-pdf", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off click-pdf",
-                click: () => {
-                    this.eventBus.off("click-pdf", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On click-editorcontent",
-                click: () => {
-                    this.eventBus.on("click-editorcontent", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off click-editorcontent",
-                click: () => {
-                    this.eventBus.off("click-editorcontent", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On click-editortitleicon",
-                click: () => {
-                    this.eventBus.on("click-editortitleicon", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off click-editortitleicon",
-                click: () => {
-                    this.eventBus.off("click-editortitleicon", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-noneditableblock",
-                click: () => {
-                    this.eventBus.on("open-noneditableblock", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-noneditableblock",
-                click: () => {
-                    this.eventBus.off("open-noneditableblock", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On loaded-protyle-static",
-                click: () => {
-                    this.eventBus.on("loaded-protyle-static", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off loaded-protyle-static",
-                click: () => {
-                    this.eventBus.off("loaded-protyle-static", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On loaded-protyle-dynamic",
-                click: () => {
-                    this.eventBus.on("loaded-protyle-dynamic", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off loaded-protyle-dynamic",
-                click: () => {
-                    this.eventBus.off("loaded-protyle-dynamic", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On switch-protyle",
-                click: () => {
-                    this.eventBus.on("switch-protyle", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off switch-protyle",
-                click: () => {
-                    this.eventBus.off("switch-protyle", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On destroy-protyle",
-                click: () => {
-                    this.eventBus.on("destroy-protyle", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off destroy-protyle",
-                click: () => {
-                    this.eventBus.off("destroy-protyle", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-doctree",
-                click: () => {
-                    this.eventBus.on("open-menu-doctree", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-doctree",
-                click: () => {
-                    this.eventBus.off("open-menu-doctree", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-blockref",
-                click: () => {
-                    this.eventBus.on("open-menu-blockref", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-blockref",
-                click: () => {
-                    this.eventBus.off("open-menu-blockref", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-fileannotationref",
-                click: () => {
-                    this.eventBus.on("open-menu-fileannotationref", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-fileannotationref",
-                click: () => {
-                    this.eventBus.off("open-menu-fileannotationref", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-tag",
-                click: () => {
-                    this.eventBus.on("open-menu-tag", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-tag",
-                click: () => {
-                    this.eventBus.off("open-menu-tag", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-link",
-                click: () => {
-                    this.eventBus.on("open-menu-link", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-link",
-                click: () => {
-                    this.eventBus.off("open-menu-link", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-image",
-                click: () => {
-                    this.eventBus.on("open-menu-image", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-image",
-                click: () => {
-                    this.eventBus.off("open-menu-image", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-av",
-                click: () => {
-                    this.eventBus.on("open-menu-av", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-av",
-                click: () => {
-                    this.eventBus.off("open-menu-av", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-content",
-                click: () => {
-                    this.eventBus.on("open-menu-content", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-content",
-                click: () => {
-                    this.eventBus.off("open-menu-content", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-menu-breadcrumbmore",
-                click: () => {
-                    this.eventBus.on("open-menu-breadcrumbmore", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-menu-breadcrumbmore",
-                click: () => {
-                    this.eventBus.off("open-menu-breadcrumbmore", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On input-search",
-                click: () => {
-                    this.eventBus.on("input-search", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off input-search",
-                click: () => {
-                    this.eventBus.off("input-search", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On paste",
-                click: () => {
-                    this.eventBus.on("paste", this.eventBusPaste);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off paste",
-                click: () => {
-                    this.eventBus.off("paste", this.eventBusPaste);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-siyuan-url-plugin",
-                click: () => {
-                    this.eventBus.on("open-siyuan-url-plugin", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-siyuan-url-plugin",
-                click: () => {
-                    this.eventBus.off("open-siyuan-url-plugin", this.eventBusLog);
-                }
-            }, {
-                icon: "iconSelect",
-                label: "On open-siyuan-url-block",
-                click: () => {
-                    this.eventBus.on("open-siyuan-url-block", this.eventBusLog);
-                }
-            }, {
-                icon: "iconClose",
-                label: "Off open-siyuan-url-block",
-                click: () => {
-                    this.eventBus.off("open-siyuan-url-block", this.eventBusLog);
-                }
-            }]
+
+        let response = await this.memosService.getMemos(param);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const records = await response.json();
+
+        if (records.length == 0) {
+          break;
+        }
+
+        let noMore = records.length < LIMIT;
+
+        // 需要添加的记录
+        let addList = records.filter(item => item.displayTs > latest_updated_at_timestamp);
+        let deleteList = records.filter(item => {
+          // 获取每个字典的创建时间和更新时间
+          let createdTime = item.createdTs;
+          let updatedTime = item.updatedTs;
+
+          // 筛选条件：创建时间小于目标时间，且更新时间大于目标时间
+          return createdTime < latest_updated_at_timestamp && updatedTime > latest_updated_at_timestamp;
         });
-        menu.addSeparator();
-        menu.addItem({
-            icon: "iconSettings",
-            label: "Official Setting Dialog",
-            click: () => {
-                this.openSetting();
-            }
-        });
-        menu.addItem({
-            icon: "iconSparkles",
-            label: this.data[STORAGE_NAME].readonlyText || "Readonly",
-            type: "readonly",
-        });
-        if (this.isMobile) {
-            menu.fullscreen();
+
+        result.addList = result.addList.concat(addList);
+        result.deleteList = result.deleteList.concat(deleteList);
+
+        if (noMore) { // 没有更多了
+          break;
         } else {
-            menu.open({
-                x: rect.right,
-                y: rect.bottom,
-                isLeft: true,
-            });
+          offset += LIMIT;
         }
+      } catch (error) {
+        await api.pushErrMsg(`plugin-memos-sync: ${error}`);
+        throw new Error(error);
+      }
     }
+    return result;
+  }
+
+  /**
+   * 保存到思源
+   * @param memos - 需要处理的记录列表
+   * @param syncMode - 同步模式
+   * @returns 
+   */
+  async saveToSiyuan(memos, syncMode) {
+    let addList = memos.addList;
+    let deleteList = memos.deleteList;
+
+    // 数据转换
+    let { memoObjList, resouceList, relationList } = await this.batchHandleMemos(addList);
+
+    // 下载图片
+    let isDownloaded = await this.resourceDownload(resouceList);
+
+    // 数据写入
+    if (isDownloaded) {
+      if (syncMode === SYNC_MAP.block) {
+        await this.putBlock(memoObjList, relationList, deleteList);
+      } else if (syncMode == SYNC_MAP.page) {
+        await this.putPage(memoObjList, relationList);
+      } else {
+        return false;
+      }
+      return true;
+    }
+  }
+
+  /**
+   * 批量处理记录
+   * @param memos - 记录列表
+   * @returns 
+   */
+  batchHandleMemos(memos) {
+    let memoObjList = [];
+    let resouceList = [];
+    let relationList = [];
+
+    memos.forEach((memo) => {
+      let memoObj = this.handelMemo(memo);
+      memoObjList.push(memoObj);
+      resouceList = resouceList.concat(memoObj.resourceList);
+      relationList = relationList.concat(memoObj.relationList);
+    })
+
+    const relations = Array.from(
+      new Map(relationList.map((relation) => [relation.memoId, relation])).values()
+    );
+
+    return {
+      memoObjList: memoObjList,
+      resouceList: resouceList,
+      relationList: relations
+    }
+  }
+
+  /**
+   * 解析记录
+   * @param memo - 记录
+   */
+  handelMemo(memo) {
+    // 获取数据
+    let memoId = memo.id;
+    let contentText = memo.content;
+    let resourceList = memo.resourceList;
+    let relationList = memo.relationList;
+    let dispalyDate = moment.unix(memo.displayTs).format(FORMAT.datetime);
+
+    // 文档标题
+    let title = `${dispalyDate}・#${memoId}`;
+
+    // 资源处理
+    let contentLink = this.batchHandelResource(resourceList); // 纯链接
+
+    // 标签处理
+    contentText = this.handleTag(contentText);
+
+    // 文本合并
+    let content = `${contentText}\n${contentLink}`;
+
+    return {
+      memoId: memoId, // ID
+      title: title, // 标题
+      content: content, // 内容
+      contentText: contentText, // 纯文本
+      contentLink: contentLink, // 纯链接
+      resourceList: resourceList, // 资源列表
+      relationList: relationList, // 关系列表
+      dispalyDate: dispalyDate,  // 显示日期
+      displayts: memo.displayTs
+    };
+  }
+
+  /**
+   * 批量解析资源
+   * @param resourceList - 资源列表
+   * @returns
+   */
+  batchHandelResource(resourceList) {
+    let fileLinkText = "";
+    resourceList.forEach(resource => {
+      // 解析资源，获取资源数据
+      let resourceMap = this.handleResource(resource);
+      let mdLink = resourceMap.mdLink;
+      fileLinkText += (resource === resourceList[resourceList.length - 1]) ? `${mdLink}` : `${mdLink}\n`;
+    })
+    return fileLinkText;
+  }
+
+  /**
+   * 解析资源
+   * @param resource - 资源
+   * @returns 
+   */
+  handleResource(resource) {
+    // 获取数据
+    let resourceType = resource.type;
+    let resourceTypeText = resourceType.split('/')[0]; // 资源类型
+    let resourceName = resource.filename; // 资源名称
+    let resourceId = resource.id; // 资源ID
+
+    // 变量定义
+    let link: string;
+    let downloadLink: string;
+
+    // 判断是否是外部链接
+    if (resource.externalLink === "") {
+      // 获取文件后缀名
+      let splitList = resourceName.split('.');
+      let end = splitList[splitList.length - 1];
+
+      // 生成新的文件名称
+      let name = `${resource.createdTs}.${end}`;
+
+      // 生成文件链接
+      link = `${MEMOS_ASSETS_DIR}/${resource.id}_${name}`;
+
+      // 更新下载链接
+      downloadLink = link;
+    } else {
+      link = resource.externalLink;
+      downloadLink = "";
+    }
+
+    // 生成符合MD格式的文本
+    let mdLink = (resourceTypeText == 'image') ? `![${resourceName}](${link})` : `[${resourceName}](${link})`;
+    // print('mdLink', mdLink);
+
+    return {
+      mdLink: mdLink,
+      downloadLink: downloadLink,
+      resourceId: resourceId
+    };
+  }
+
+  /**
+   * 标签处理
+   * @param content 正文
+   * @param tags 
+   * @returns 
+   */
+  handleTag(content) {
+    const regex = /#.*?(?=\s|#|$)/g;  // 标签匹配规则
+    const result = content.replace(regex, (match) => `${match}# `);
+    return result;
+  }
+
+  /**
+   * 下载资源到本地
+   * @param resourceList - 资源列表
+   * @returns 
+   */
+  async resourceDownload(resourceList) {
+    // 处理图片逻辑
+    try {
+      for (let resource of resourceList) {
+        // 解析资源
+        let res = this.handleResource(resource);
+
+        // 如果 downloadLink 为空，则跳过当前循环
+        if (res.downloadLink === "") {
+          continue;
+        }
+
+        // 生成保存路径
+        let savePath = `data/${res.downloadLink}`;
+
+        // 获取资源文件
+        let resourceId = res.resourceId;
+        let response = await this.memosService.downloadResource(resourceId);
+        let fileBlob = await response.blob();
+
+        // 下载文件到思源
+        await api.putFile(savePath, fileBlob);
+      }
+    } catch (error) {
+      await api.pushErrMsg(`plugin-memos-sync: ${error}`);
+      throw new Error(error);
+    }
+    return true;
+  }
+
+  /**
+   * 判断某个笔记本是否存在
+   * @param notebookId - 笔记本ID
+   * @returns 
+   */
+  async isExistNotebook(notebookId) {
+    let notebookMaps = await this.getNotebooks();
+    return (notebookId in notebookMaps);
+  }
+
+  /**
+   * 获取需要删除的块ID
+   * @param deleteList - 需要删除的记录列表
+   * @returns 
+   */
+  async getDelBlockIdList(deleteList) {
+    let delMemosIdList = await getAttrList(deleteList, 'id'); // 提取需要删除的 memosId
+    let delBlockList = await this.batchGetAttrByMemosId(delMemosIdList); // 通过 memosId 批量获取需要被删除的块
+    let delBlockIdList = [];
+    if (delBlockList.length !== 0) {
+      delBlockIdList = await getAttrList(delBlockList, 'block_id'); // 提取需要删除 blockId
+    }
+    return delBlockIdList;
+  }
+
+  /**
+   * 根据 memosId 批量获取对应的 blockId
+   * @param memosIdList - 记录id列表
+   * @returns 
+   */
+  async batchGetAttrByMemosId(memosIdList) {
+    let result = [];
+    for (let memosId of memosIdList) {
+      let attrList = await this.getAttrByMemosId(memosId);
+      result = result.concat(attrList);
+    }
+    return result;
+  }
+
+  /**
+   * 批量删除块
+   * @param idList - 需要删除的块ID列表
+   * @returns 
+   */
+  async batchDeleteBlock(idList) {
+    let delErrorList = [];
+    for (let id of idList) {
+      let response = await api.deleteBlock(id);
+      // print(response);
+      if (!api.isOK(response)) {
+        delErrorList.push(id);
+        break;
+      }
+      if (response.code == -1) {
+        delErrorList.push(id);
+        continue;
+      }
+    }
+    return delErrorList;
+  }
+
+  /**
+   * 获取当前的memos-block映射表
+   * @returns 
+   */
+  async getBlockIdMaps() {
+    let result = {};
+    let attrs = await this.getAttrAllMemos();
+    for (let attr of attrs) {
+      let memosId = attr.value;
+      let blockId = attr.block_id;
+      result[memosId] = blockId;
+    }
+    return result;
+  }
+
+  /**
+    * 获取所有包含custom-memo-id数据
+    * @returns 
+    */
+  async getAttrAllMemos() {
+    let sql = `SELECT * FROM attributes WHERE name='custom-memo-id';`
+    let response = await api.querySql(sql);
+    return response.data;
+  }
+
+  /**
+   * 将列表根据日期分组，以日期作为KEY
+   * @param dataList 需要分组的列表
+   * @param key 
+   * @returns null or maps
+   */
+  async groupListByDate(dataList, key: string, isTimestamp = false) {
+    if (dataList.length === 0 || !(key in dataList[0])) {
+      throw new Error(`${key} 不存在！`);
+    }
+
+    const groupedData = dataList.reduce((result, item) => {
+      // 将时间戳转换为日期字符串，作为分组的 key
+      const dateKey = (isTimestamp) ? moment.unix(item[key]).format(FORMAT.date) : moment(item[key]).format(FORMAT.date);
+
+      // 如果 result 中已有该日期的组，直接添加到该组，否则创建新组
+      if (result[dateKey]) {
+        result[dateKey].push(item);
+      } else {
+        result[dateKey] = [item];
+      }
+
+      return result;
+    }, {});
+
+    return groupedData;
+  }
+
+  /**
+   * 根据日期查询是否存在该日的Daily Note，若存在，返回文档ID，若不存在，自动创建并返回文档ID
+   * @param notebookId 笔记本ID
+   * @param date 日期
+   * @returns 文档ID null or string
+   */
+  async searchDailyNote(notebookId: string, date: string): Promise<string> {
+    // 获取可读路径
+    let hpath = await this.getPastDNHPath(notebookId, date);
+
+    if (!hpath) {
+      return;
+    }
+
+    // 获取文档ID
+    let pageId = "";
+
+    let response = await api.getIDsByHPath(notebookId, hpath);
+
+    if (!api.isOK(response)) {
+      return;
+    }
+
+    let IDs = response.data;
+    if (IDs === null) {
+      let response = await api.createDocWithMd(notebookId, hpath, "");
+
+      if (!api.isOK(response)) {
+        return;
+      }
+
+      pageId = response.data;
+    } else {
+      pageId = IDs[0];
+    }
+    return pageId;
+  }
+
+  /**
+   * 获得可读路径
+   * @param notebookId 笔记本ID
+   * @param date 日期
+   * @returns 文档路径 null or string
+   */
+  async getPastDNHPath(notebookId: string, date: string): Promise<string> {
+    let notebookConfResponse = await api.getNotebookConf(notebookId);
+
+    if (!api.isOK(notebookConfResponse)) {
+      await api.pushErrMsg("找不到该笔记本！");
+      return;
+    }
+
+    let dailyNoteSavePath = notebookConfResponse.data.conf.dailyNoteSavePath;
+
+    let dateStr = moment(date).format(FORMAT.date);
+    let sprig = `toDate "2006-01-02" "${dateStr}"`;
+
+    dailyNoteSavePath = dailyNoteSavePath.replaceAll(/now/g, sprig);
+
+    let response = await api.renderSprig(dailyNoteSavePath);
+
+    if (!api.isOK(response)) {
+      await api.pushErrMsg("模板解析失败！");
+      return;
+    }
+
+    let hpath = response.data;
+    return hpath;
+  }
+
+  /**
+   * 从响应信息中提取块id
+   * @param response - 响应信息
+   * @returns {string}
+   */
+  async getResponseBlockId(response) {
+    let reponseData = response.data;
+    let doOperations = reponseData[0].doOperations;
+    let blockId = doOperations[0].id;
+    return blockId;
+  }
+
+  /**
+   * 批量将记录添加到块中
+   * @param pageId - 文档ID
+   * @param memoObjList - 需要添加的记录列表
+   * @returns 
+   */
+  async batchHandleContentBlock(pageId, memoObjList) {
+    let blockIdMap = {};
+    for (let memoObj of memoObjList) {
+      let memoId = memoObj.memoId;
+      let response = await this.handleContentBlock(pageId, memoObj);
+      // print('response', response);
+
+      if (!response) {
+        continue;
+      }
+
+      let blockId = await this.getResponseBlockId(response);
+      // print('blockId', blockId)
+      blockIdMap[memoId] = blockId;
+    }
+    return blockIdMap;
+  }
+
+  /**
+   * 将记录添加到块中
+   * @param pageId - 文档ID
+   * @param memoObj - 需要添加的记录
+   * @returns 
+   */
+  async handleContentBlock(pageId, memoObj) {
+    let title = memoObj.title;
+
+    // 标题写入
+    let content = `* ${title}`;
+    let response = await api.appendBlock(pageId, content);
+
+    if (!api.isOK(response)) {
+      return;
+    }
+
+    let bid = await this.getResponseBlockId(response);
+    let childResponse = await api.getChildBlocks(bid);
+
+    if (!api.isOK(childResponse)) {
+      return;
+    }
+
+    // 内容写入
+    let childId = childResponse.data[0].id;
+    await api.appendBlock(childId, content);
+    return response;
+  }
+
+  /**
+   * 引用处理
+   * @param relationList 
+   * @param blockIdMaps 
+   */
+  async relationBlock(relationList, blockIdMaps) {
+    let configData = this.data[STORAGE_NAME];
+    let markMode = configData.markMode;
+    let content = "";
+    let error_blockIdList = []
+    let syncMode = configData.syncMode;
+
+    // print('relationList', relationList);
+    // print('blockIdMaps', blockIdMaps);
+    for (let relation of relationList) {
+      let memoId = relation.memoId;
+      let relatedMemoId = relation.relatedMemoId;
+      let blockId = blockIdMaps[memoId];
+      let relatedBlockId = blockIdMaps[relatedMemoId];
+
+      let rMap = {
+        relation: relation,
+        memoId: memoId,
+        relatedMemoId: relatedMemoId,
+        blockId: blockId,
+        relatedBlockId: relatedBlockId
+      }
+
+      if (!blockId) {
+        error_blockIdList.push(rMap);
+        continue;
+      }
+
+      let useId = blockId;
+
+      if (syncMode === SYNC_MAP.block) {
+        let response = await api.getChildBlocks(blockId);
+
+        if (!api.isOK(response)) {
+          continue;
+        }
+        let childId = response.data[0].id;
+        useId = childId;
+      }
+
+      if (markMode === MARK_MAP.blockEmbed) {
+        content = `{{select * from blocks where id="${relatedBlockId}"}}`;
+      } else if (markMode === MARK_MAP.blockRef) {
+        content = `((${relatedBlockId} "@${relatedMemoId}"))`
+      } else {
+        return;
+      }
+
+      await api.appendBlock(useId, content);
+    }
+    return error_blockIdList;
+  }
+
+  /**
+   * 批量设置块属性
+   * @param blockIdMaps 
+   */
+  async batchSetBlockAttr(blockIdMaps: IBlockIdMaps | {}) {
+    if (isObjectEmpty(blockIdMaps)) {
+      return;
+    }
+
+    for (const [memoId, blockId] of Object.entries(blockIdMaps)) {
+      let attrs = {
+        "custom-memo-id": `${memoId}`
+      }
+
+      await api.setBlockAttrs(blockId, attrs);
+    }
+  }
+
+  /**
+   * 
+   * @param memosId 
+   * @returns 
+   */
+  async getAttrByMemosId(memosId) {
+    let sql = `SELECT * FROM attributes WHERE name='custom-memo-id' AND value='${memosId}';`
+    let response = await api.querySql(sql);
+    return response.data;
+  }
+
+  /**
+   * 以块的形式写入思源
+   * @param memoObjList 
+   * @param relationList 
+   * @param deleteList 
+   */
+  async putBlock(memoObjList, relationList, deleteList) {
+    let configData = this.data[STORAGE_NAME];
+    let notebookId = configData.notebookId; // 笔记本ID
+
+    if (!this.isExistNotebook(notebookId)) {
+      await api.pushErrMsg("你选择笔记本当前不存在！");
+      return;
+    }
+
+    // 删除旧块
+    let delIdList = await this.getDelBlockIdList(deleteList);
+    if (delIdList.length > 0) {
+      await this.batchDeleteBlock(delIdList);
+    }
+
+    // 获取新的表
+    let blockIdMaps = await this.getBlockIdMaps();
+
+    // 按日期分组数据
+    let groupedData: IGroupedData = await this.groupListByDate(memoObjList, 'dispalyDate');
+
+    // 分批写入
+    for (const [dispalyDate, memoObjs] of Object.entries(groupedData)) {
+      // 获取文档ID
+      let pageId = await this.searchDailyNote(notebookId, dispalyDate);
+      memoObjs.sort((a, b) => +a.displayts - +b.displayts);
+      let blockIdMap = await this.batchHandleContentBlock(pageId, memoObjs);
+      Object.assign(blockIdMaps, blockIdMap);
+    }
+
+    // 引用关联
+    await this.relationBlock(relationList, blockIdMaps);
+
+    // 设置块属性
+    await this.batchSetBlockAttr(blockIdMaps);
+  }
+
+  /**
+   * 以页面的形式写入思源
+   * @param memoObjList 
+   * @param relationList 
+   * @returns 
+   */
+  async putPage(memoObjList, relationList) {
+    let configData = this.data[STORAGE_NAME];
+    let notebookId = configData.notebookId;
+    let pagePath = configData.pagePath;
+    let blockIdMaps = {};
+
+    // 判断笔记本是否存在
+    if (!this.isExistNotebook(notebookId)) {
+      await api.pushErrMsg("你选择的笔记本当前不存在！");
+    }
+
+    // 保存为页面
+    for (let memoObj of memoObjList) {
+      let memoId = memoObj.memoId;
+      let title = memoObj.title;
+      let path = `${pagePath}/${title}`
+      let md = memoObj.content;
+      let response = await api.createDocWithMd(notebookId, path, md);
+
+      if (!api.isOK(response)){
+        continue;
+      }
+
+      let blockId = response.data;
+      blockIdMaps[memoId] = blockId;
+    }
+
+    // 引用关联
+    await this.relationBlock(relationList, blockIdMaps);
+  }
+
+  /**
+   * 检查是否有数据要更新，有则改变图标
+   */
+  async checkNew() {
+    let isReady = await this.checkBeforeSync();
+    let memos = await this.getLatestMemos();
+    if (isReady && memos.addList.length > 0) {
+      this.topBarElement.innerHTML = getSvgHtml("new");
+    }
+  }
+
+  /**
+   * 将回调变为异步函数
+   * @param callFun 
+   * @param success 
+   * @param fail 
+   * @param args 
+   * @returns 
+   */
+  async waitFunction(callFun, success, fail, ...args) {
+    return new Promise((resolve) => {
+      callFun(...args, (...result) => {
+        resolve(success(...result));
+      }, (...result) => {
+        resolve(fail(...result));
+      });
+    });
+  }
+
+  /**
+   * 开始同步
+   */
+  async runSync() {
+    // 防止快速点击、或手动和自动运行冲突。
+    if (this.syncing == true) {
+      await api.pushMsg("同步中，请稍候...")
+      return;
+    }
+
+    // 运行前检查
+    if (!(await this.checkBeforeSync())) {
+      return;
+    }
+
+    let runBeforeSvg = this.topBarElement.innerHTML;  // 缓存
+    this.syncing = true;  // 同步标志
+
+    try {
+      this.topBarElement.innerHTML = getSvgHtml("refresh")  // 刷新图标
+
+      await this.initData();  // 初始化数据
+      let configData = this.data[STORAGE_NAME]; // 读取配置
+      let syncMode = configData.syncMode; // 同步保存方案
+
+      // 检查是否有新数据
+      let memos = await this.getLatestMemos();
+
+      if (memos.addList.length == 0) {
+        await api.pushMsg("暂无新数据！");
+        this.syncing = false;
+        this.topBarElement.innerHTML = getSvgHtml("memos");
+        return;
+      }else{
+        await api.pushMsg("同步中，请稍候...");
+      }
+
+      // 保存
+      let result = await this.saveToSiyuan(memos, syncMode);
+      if (!result) {
+        await api.pushErrMsg("同步失败！");
+        this.topBarElement.innerHTML = runBeforeSvg; // 报错图标就恢复成之前的状态
+        this.syncing = false;
+        return;
+      }
+
+      // 记录同步时间,间隔1秒
+      await setTimeout(async () => {
+        let nowTimeText = moment().format(FORMAT.datetime);
+        this.data[STORAGE_NAME]["lastSyncTime"] = nowTimeText;
+        await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+      }, 1000)
+
+      // 同步完成
+      this.topBarElement.innerHTML = getSvgHtml("memos");
+      await api.pushMsg("同步完成！")
+    } catch (error) {
+      await api.pushErrMsg("同步失败！");
+      this.topBarElement.innerHTML = runBeforeSvg; // 报错图标就恢复成之前的状态
+      await api.pushErrMsg(`plugin-memos-sync: ${error}`);
+      throw new Error(error);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /**
+   * 获取笔记本列表封装成映射
+   * @returns 
+   */
+  async getNotebooks() {
+    let response = await api.lsNotebooks();
+
+    if (!api.isOK(response)) {
+      await api.pushErrMsg("获取笔记本列表失败");
+      return;
+    }
+
+    let result = [];
+    let notebooks = response.data.notebooks;
+
+    for (let notebook of notebooks) {
+      result.push({
+        value: notebook['id'],
+        text: notebook['name']
+      });
+    }
+    return result;
+  }
+
+  /**
+   * 初始化数据
+   */
+  async initData() {
+    this.data[STORAGE_NAME] = await this.loadData(STORAGE_NAME) || {};
+
+    let defaultConfig = {
+      baseUrl: "",
+      accessToken: "",
+      lastSyncTime: moment().format("2000-01-01 00:00:00"),
+      syncMode: "",
+      notebookId: "",
+      pagePath: "",
+      markMode: ""
+    }
+
+    let configData = this.data[STORAGE_NAME];
+    for (let k in defaultConfig) {
+      if (configData[k] === undefined || configData[k] === "undefined") {
+        configData[k] = defaultConfig[k];
+      }
+    }
+
+    this.memosService = new memosApi(configData.baseUrl, configData.accessToken);
+  }
+
+  /**
+   * 检查必填项
+   * @returns
+   */
+  async checkRequired() {
+    let configData = this.data[STORAGE_NAME];
+
+    let requiredList = [
+      configData.baseUrl,
+      configData.accessToken,
+      configData.lastSyncTime,
+      configData.syncMode,
+      configData.notebookId,
+      configData.markMode
+    ]
+
+    for (let required of requiredList) {
+      if (!required) {
+        await api.pushErrMsg("请检查设置必填项是否全部配置！");
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * 校验 Access Token
+   * @param baseUrl - 基础路径
+   * @param accessToken - 授权码
+   * @param isShow - 是否显示验证成功的消息，默认为 false
+   * @returns 
+   */
+  async checkAccessToken(baseUrl = "", accessToken = "", isShow = false) {
+    let configData = this.data[STORAGE_NAME];
+
+    baseUrl = (baseUrl === "") ? configData.baseUrl : baseUrl;
+    accessToken = (accessToken === "") ? configData.accessToken : accessToken;
+
+    if (!baseUrl || !accessToken) {
+      await api.pushErrMsg("未配置服务器路径或授权码！")
+      return false;
+    }
+
+    try {
+      let service = new memosApi(baseUrl, accessToken);
+
+      // 检查服务器是否正常运行
+      let pingResponse = await service.pingMemos();
+
+      if (!pingResponse.ok) {
+        throw new Error(`HTTP error! status: ${pingResponse.status}`);
+      }
+
+      let servicePing = { success: await pingResponse.json() };
+
+      if (!servicePing) {
+        await api.pushErrMsg("Memos 连接失败，请检查服务器是否运行正常！");
+        return false;
+      }
+
+      // 校验 Access Token
+      let response = await service.getUserMe();
+
+      if (!response.ok) {
+        if (response.status == 401) {
+          await api.pushErrMsg("Access Token 验证失败！");
+          return false;
+        }
+        throw new Error(`HTTP error! status: ${pingResponse.status}`);
+      }
+
+      if (isShow) {
+        await api.pushMsg("Access Token 验证通过");
+      }
+      return true;
+    } catch (error) {
+      await api.pushErrMsg(`plugin-memos-sync: ${error}`);
+      throw new Error(`${error}`);
+    }
+  }
+
+  /**
+   * 处理监听同步事件
+   * @param detail 
+   */
+  async eventBusHandler(detail) {
+    await this.checkNew() // 检查 Memos 是否有新数据
+  }
+
+  async onload() {
+    // 获取本地配置
+    let conResponse = await api.getLocalStorage();
+    this.siyuanStorage = conResponse["data"];
+
+    // 初始化配置
+    await this.initData();
+
+    const frontEnd = getFrontend();
+    this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+
+    onSyncEndEvent = this.eventBusHandler.bind(this);
+    this.eventBus.on("sync-end", onSyncEndEvent);
+
+    //顶栏图标
+    this.topBarElement = this.addTopBar({
+      icon: getSvgHtml('memos'),
+      title: "Memos同步",
+      position: "right",
+      callback: await this.runSync.bind(this)
+    });
+
+    let checkButtonElement = document.createElement("button"); // 校验按钮
+    let baseUrlElement = document.createElement("input"); // 基础路径
+    let accessTokenElement = document.createElement("input"); // 授权码
+    let lastSyncTimeElement = document.createElement('input');  // 上次同步时间
+    let syncModeElement;  //同步保存方案
+    let notebookIdElement;  // 选择笔记本
+    let pagePathElement = document.createElement('input');  // 文档路径
+    let markModeElement;  // 引用处理方案
+
+    this.setting = new Setting({
+      // 配置窗口大小
+      width: '800px',
+      height: '750px',
+
+      confirmCallback: async () => {
+        // 必填项校验
+        let requiredList = [
+          baseUrlElement.value,
+          accessTokenElement.value,
+          lastSyncTimeElement.value,
+          syncModeElement.value,
+          notebookIdElement.value,
+          markModeElement.value
+        ]
+        for (let required of requiredList) {
+          if (!required) {
+            await api.pushErrMsg("请确认必填项是否全部配置！")
+            return;
+          }
+        }
+
+        // 保存设置数据
+        let configData = this.data[STORAGE_NAME];
+
+        configData.baseUrl = baseUrlElement.value;
+        configData.accessToken = accessTokenElement.value;
+        configData.lastSyncTime = lastSyncTimeElement.value;
+        configData.syncMode = syncModeElement.value;
+        configData.notebookId = notebookIdElement.value;
+        configData.pagePath = pagePathElement.value;
+        configData.markMode = markModeElement.value;
+
+        await this.saveData(STORAGE_NAME, configData);
+
+        // 生成Memos对象
+        this.memosService = new memosApi(configData.baseUrl, configData.accessToken);
+      }
+    });
+
+    // 添加校验按钮
+    this.setting.addItem({
+      title: "Access Token 校验",
+      description: "检查能否访问 Memos",
+      createActionElement: () => {
+        checkButtonElement.className = "b3-button b3-button--outline fn__flex-center";
+        checkButtonElement.textContent = "校验";
+        return checkButtonElement;
+      },
+    });
+
+    // 按钮绑定事件
+    checkButtonElement.addEventListener('click', async () => {
+      await this.checkAccessToken(baseUrlElement.value, accessTokenElement.value, true);  // 校验 Access Token
+    });
+
+    // 添加基础路径输入框
+    this.setting.addItem({
+      title: "服务器地址 <code class='fn__code'>必填项</code>",
+      description: "允许使用域名或者IP地址，地址最后不要保留 '/'",
+      createActionElement: () => {
+        baseUrlElement.className = "b3-text-field fn__size350 fn__flex-center";
+        baseUrlElement.value = this.data[STORAGE_NAME].baseUrl;
+        return baseUrlElement;
+      },
+    });
+
+    // 添加授权码输入框
+    this.setting.addItem({
+      title: "授权码 <code class='fn__code'>必填项</code>",
+      description: "请在设置页面获取 Access Token",
+      createActionElement: () => {
+        accessTokenElement.className = "b3-text-field fn__size350 fn__flex-center";
+        accessTokenElement.value = this.data[STORAGE_NAME].accessToken;
+        return accessTokenElement;
+      },
+    });
+
+    // 添加上次同步时间输入框
+    this.setting.addItem({
+      title: "上次同步时间",
+      description: `同步完成后会自动更新，如有特殊需要可以手动修改`,
+      createActionElement: () => {
+        lastSyncTimeElement.className = "b3-text-field fn__size200 fn__flex-center fn__block";
+        lastSyncTimeElement.value = this.data[STORAGE_NAME].lastSyncTime;
+        return lastSyncTimeElement;
+      },
+    });
+
+    // 添加同步方案下拉框
+    this.setting.addItem({
+      title: "同步方案 <code class='fn__code'>必填项</code>",
+      description: "1. 同步至 Daily Note：需要配置笔记本，文档路径无效<br>2. 同步至笔记本或文档下：需要配置笔记本，如需保存至指定文档下需要配置文档路径",
+      createActionElement: () => {
+        syncModeElement = document.createElement('select')
+        syncModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            value: SYNC_MAP.block,
+            text: "同步至 Daily Notes"
+          },
+          {
+            value: SYNC_MAP.page,
+            text: "同步至笔记本或文档下"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.value;
+          optionElement.text = option.text;
+          syncModeElement.appendChild(optionElement);
+        }
+        syncModeElement.value = this.data[STORAGE_NAME].syncMode;
+        return syncModeElement;
+      }
+    });
+
+    // 添加笔记本下拉框
+    this.nowNotebooks = await this.getNotebooks();
+    this.setting.addItem({
+      title: "笔记本 <code class='fn__code'>必填项</code>",
+      createActionElement: () => {
+        notebookIdElement = document.createElement('select')
+        notebookIdElement.className = "b3-select fn__flex-center fn__size200";
+        let options = this.nowNotebooks;
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.value;
+          optionElement.text = option.text;
+          notebookIdElement.appendChild(optionElement);
+        }
+        notebookIdElement.value = this.data[STORAGE_NAME].notebookId;
+        return notebookIdElement;
+      },
+    });
+
+    // 添加文档路径输入框
+    this.setting.addItem({
+      title: "文档路径",
+      description: "如需保存至指定文档下，请以'/'开头进行填写",
+      createActionElement: () => {
+        pagePathElement.className = "b3-text-field fn__size200 fn__flex-center";
+        pagePathElement.value = this.data[STORAGE_NAME].pagePath;
+        return pagePathElement;
+      },
+    });
+
+    // 添加引用处理方案下拉框
+    this.setting.addItem({
+      title: "引用处理方案 <code class='fn__code'>必填项</code>",
+      description: "Memos的引用在思源的保存方案处理",
+      createActionElement: () => {
+        markModeElement = document.createElement('select')
+        markModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: MARK_MAP.blockRef,
+            text: "引用块"
+          },
+          {
+            val: MARK_MAP.blockEmbed,
+            text: "嵌入块"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          markModeElement.appendChild(optionElement);
+        }
+        markModeElement.value = this.data[STORAGE_NAME].markMode;
+        return markModeElement;
+      }
+    });
+
+    // 检查是否有新数据
+    await this.checkNew();
+  }
+
+  async openSetting(){
+    this.nowNotebooks = await this.getNotebooks();
+    super.openSetting();
+  }
+
+  async onunload() {
+    this.eventBus.off("sync-end", this.eventBusHandler.bind(this));
+    this.syncing = false;
+  }
+
+  async onLayoutReady() {
+    await this.checkAccessToken();
+  }
 }

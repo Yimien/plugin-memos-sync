@@ -1,36 +1,32 @@
 {
-  "name": "plugin-sample-vite",
-  "author": "frostime",
-  "url": "https://github.com/frostime/plugin-sample-vite",
-  "version": "0.2.8",
-  "minAppVersion": "2.10.14",
+  "name": "plugin-memos-sync",
+  "author": "Yimien",
+  "url": "https://github.com/Yimien/plugin-memos-sync.git",
+  "version": "0.1.0",
+  "minAppVersion": "2.11.3",
   "backends": [
-    "windows",
-    "linux",
-    "darwin"
+    "all"
   ],
   "frontends": [
-    "desktop",
-    "desktop-window"
+    "all"
   ],
   "displayName": {
-    "en_US": "Plugin sample with vite",
-    "zh_CN": "插件样例 vite 版"
+    "en_US": "Memos Sync",
+    "zh_CN": "Memos 同步"
   },
   "description": {
-    "en_US": "SiYuan plugin sample with vite",
-    "zh_CN": "使用 vite 开发的思源插件样例"
+    "en_US": "Memos Sync",
+    "zh_CN": "Memos 同步"
   },
   "readme": {
     "en_US": "README.md",
-    "zh_CN": "README_zh_CN.md"
+    "zh_CN": "README.md"
   },
   "funding": {
     "custom": [
-      "https://afdian.net/a/frostime"
     ]
   },
   "keywords": [
-    "plugin", "sample", "插件样例"
+    "Memos", "同步", "sync"
   ]
 }
