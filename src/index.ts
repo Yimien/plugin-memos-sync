@@ -29,6 +29,11 @@ const MARK_MAP = {
   blockRef: "0",
   blockEmbed: "1"
 }
+// 图片布局
+const IMAGE_LAYOUT = {
+  direction: '0',
+  transverse: '1'
+}
 
 let onSyncEndEvent: EventListener;
 
@@ -201,24 +206,29 @@ export default class MemosSync extends Plugin {
     let title = `${dispalyDate}・#${memoId}`;
 
     // 资源处理
-    let contentLink = this.batchHandelResource(resourceList); // 纯链接
+    let resourceMaps = this.batchHandelResource(resourceList);
+    let resourceLinks = resourceMaps.resourceLinks;
+    let imageLinks = resourceMaps.imageLinks;
+    let resources = resourceMaps.resources;
 
     // 标签处理
     contentText = this.handleTag(contentText);
 
     // 文本合并
-    let content = `${contentText}\n${contentLink}`;
+    let content = `${contentText}\n${resourceLinks}`;
 
     return {
-      memoId: memoId, // ID
+      memoId: memoId, // Memos Id
       title: title, // 标题
       content: content, // 内容
-      contentText: contentText, // 纯文本
-      contentLink: contentLink, // 纯链接
       resourceList: resourceList, // 资源列表
       relationList: relationList, // 关系列表
+      contentText: contentText, // 不包含资源的纯文本
+      contentLink: resourceLinks, // 仅包含资源的文本
+      imageLinks: imageLinks, // 仅包含图片的文本
+      resources: resources, // 不包含图片的资源列表
       dispalyDate: dispalyDate,  // 显示日期
-      displayts: memo.displayTs
+      displayts: memo.displayTs // 显示时间戳
     };
   }
 
@@ -228,14 +238,41 @@ export default class MemosSync extends Plugin {
    * @returns
    */
   batchHandelResource(resourceList) {
-    let fileLinkText = "";
+    let resourceLinks = ""; // 所有资源链接
+    let imageLinks = "";  // 图片链接
+    let resources = [];  // 存放所有非图片的资源
+
+    let configData = this.data[STORAGE_NAME];
+    let imageLayout = configData.imageLayout;
+
     resourceList.forEach(resource => {
       // 解析资源，获取资源数据
       let resourceMap = this.handleResource(resource);
       let mdLink = resourceMap.mdLink;
-      fileLinkText += (resource === resourceList[resourceList.length - 1]) ? `${mdLink}` : `${mdLink}\n`;
+      let resourceTypeText = resourceMap.resourceTypeText;
+      if (mdLink){
+        // 针对保存到块的处理
+        if (resourceTypeText == "image"){
+          imageLinks += `${mdLink}`;
+          if (imageLayout === IMAGE_LAYOUT.direction && (resource !== resourceList[resourceList.length -1])){
+            imageLinks += "\n";
+          }      
+        }else{
+          resources.push(mdLink);
+        }
+
+        // 针对保存到文档的处理
+        resourceLinks += `${mdLink}`;
+        if (resource !== resourceList[resourceList.length -1]){
+          resourceLinks += "\n";
+        }
+      }
     })
-    return fileLinkText;
+    return {
+      resourceLinks: resourceLinks,
+      imageLinks: imageLinks,
+      resources: resources
+    };
   }
 
   /**
@@ -280,7 +317,8 @@ export default class MemosSync extends Plugin {
     return {
       mdLink: mdLink,
       downloadLink: downloadLink,
-      resourceId: resourceId
+      resourceId: resourceId,
+      resourceTypeText: resourceTypeText
     };
   }
 
@@ -528,6 +566,45 @@ export default class MemosSync extends Plugin {
   }
 
   /**
+   * 删除页面的空内容块
+   * @param pageId - 文档ID
+   * @returns 
+   */
+  async delEmptyBlock(pageId){
+    let response = await api.getChildBlocks(pageId);
+    print('response', response);
+    if (!api.isOK(response)){
+      return;
+    }
+    
+   
+    let blockList = response.data;
+    print('blockList.length', blockList.length)
+    if (blockList.length === 0){
+      return;
+    }
+
+    let lastBlock = blockList[blockList.length - 1];
+    let lastBlockId = lastBlock.id;
+
+    let blocks = await this.getBlockContentById(lastBlockId);
+    print('blocks', blocks)
+    if (blocks.length === 0){
+      return;
+    }
+
+    let lastBlockContent = blocks[0].content;
+    print(lastBlockContent);
+    if (lastBlockContent){
+      return;
+    }
+
+    // 删除空内容块
+    print('正在删除空内容块');
+    await api.deleteBlock(lastBlockId);
+  }
+
+  /**
    * 批量将记录添加到块中
    * @param pageId - 文档ID
    * @param memoObjList - 需要添加的记录列表
@@ -535,6 +612,7 @@ export default class MemosSync extends Plugin {
    */
   async batchHandleContentBlock(pageId, memoObjList) {
     let blockIdMap = {};
+    
     for (let memoObj of memoObjList) {
       let memoId = memoObj.memoId;
       let response = await this.handleContentBlock(pageId, memoObj);
@@ -577,8 +655,23 @@ export default class MemosSync extends Plugin {
 
     // 内容写入
     let childId = childResponse.data[0].id;
-    let content = memoObj.content;
-    await api.appendBlock(childId, content);
+    // 文本
+    let contentText = memoObj.contentText;
+    if (contentText){
+      await api.appendBlock(childId, contentText);
+    }
+    // 图片
+    let imageLinks = memoObj.imageLinks;
+    if (imageLinks){
+      await api.appendBlock(childId, imageLinks);
+    }
+    // 其它资源
+    let resources = memoObj.resources;
+    if (resources.length > 0){
+      for (let r of resources){
+        await api.appendBlock(childId, r);
+      }
+    }
     return response;
   }
 
@@ -666,6 +759,19 @@ export default class MemosSync extends Plugin {
   async getAttrByMemosId(memosId) {
     let sql = `SELECT * FROM attributes WHERE name='custom-memo-id' AND value='${memosId}';`
     let response = await api.querySql(sql);
+    return response.data;
+  }
+
+  /**
+   * 查询块
+   * @param blockId 
+   * @returns 
+   */
+  async getBlockContentById(blockId){
+    print('getBlockContentById blockId', blockId);
+    let sql = `SELECT * FROM blocks WHERE id="${blockId}";`
+    let response = await api.querySql(sql);
+    print('getBlockContentById response', response);
     return response.data;
   }
 
@@ -872,16 +978,6 @@ export default class MemosSync extends Plugin {
    * 初始化数据
    */
   async initData() {
-    
-    // 获取本地配置
-    let conResponse = await api.getLocalStorage();
-    this.siyuanStorage = conResponse["data"];
-
-    const frontEnd = getFrontend();
-    this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-
-    
-
     this.data[STORAGE_NAME] = await this.loadData(STORAGE_NAME) || {};
 
     let defaultConfig = {
@@ -891,7 +987,8 @@ export default class MemosSync extends Plugin {
       syncMode: "",
       notebookId: "",
       pagePath: "",
-      markMode: ""
+      markMode: MARK_MAP.blockRef,
+      imageLayout: IMAGE_LAYOUT.direction
     }
 
     let configData = this.data[STORAGE_NAME];
@@ -917,7 +1014,8 @@ export default class MemosSync extends Plugin {
       configData.lastSyncTime,
       configData.syncMode,
       configData.notebookId,
-      configData.markMode
+      configData.markMode,
+      configData.imageLayout
     ]
 
     for (let required of requiredList) {
@@ -993,12 +1091,15 @@ export default class MemosSync extends Plugin {
   }
   
   async onload() {
-    
+    // 获取本地配置
+    let conResponse = await api.getLocalStorage();
+    this.siyuanStorage = conResponse["data"];
 
     // 初始化配置
     await this.initData();
 
-    
+    const frontEnd = getFrontend();
+    this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
 
     onSyncEndEvent = this.eventBusHandler.bind(this);
     this.eventBus.on("sync-end", onSyncEndEvent);
@@ -1020,11 +1121,12 @@ export default class MemosSync extends Plugin {
     let notebookIdElement;  // 选择笔记本
     let pagePathElement = document.createElement('input');  // 文档路径
     let markModeElement;  // 引用处理方案
+    let imageLayoutElement; // 图片布局
 
     this.setting = new Setting({
       // 配置窗口大小
       width: '800px',
-      height: '750px',
+      height: '670px',
 
       confirmCallback: async () => {
         // 必填项校验
@@ -1034,7 +1136,8 @@ export default class MemosSync extends Plugin {
           lastSyncTimeElement.value,
           syncModeElement.value,
           notebookIdElement.value,
-          markModeElement.value
+          markModeElement.value,
+          imageLayoutElement.value
         ]
         for (let required of requiredList) {
           if (!required) {
@@ -1053,6 +1156,7 @@ export default class MemosSync extends Plugin {
         configData.notebookId = notebookIdElement.value;
         configData.pagePath = pagePathElement.value;
         configData.markMode = markModeElement.value;
+        configData.imageLayout = imageLayoutElement.value;
 
         await this.saveData(STORAGE_NAME, configData);
 
@@ -1193,6 +1297,34 @@ export default class MemosSync extends Plugin {
         }
         markModeElement.value = this.data[STORAGE_NAME].markMode;
         return markModeElement;
+      }
+    });
+
+    // 图片布局处理方案
+    this.setting.addItem({
+      title: "图片块布局 <code class='fn__code'>必填项</code>",
+      description: "Memos的图片在思源的保存方案处理",
+      createActionElement: () => {
+        imageLayoutElement = document.createElement('select')
+        imageLayoutElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: IMAGE_LAYOUT.direction,
+            text: "纵向布局"
+          },
+          {
+            val: IMAGE_LAYOUT.transverse,
+            text: "横向布局"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          imageLayoutElement.appendChild(optionElement);
+        }
+        imageLayoutElement.value = this.data[STORAGE_NAME].imageLayout;
+        return imageLayoutElement;
       }
     });
 
