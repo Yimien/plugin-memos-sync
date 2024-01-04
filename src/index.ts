@@ -250,20 +250,20 @@ export default class MemosSync extends Plugin {
       let resourceMap = this.handleResource(resource);
       let mdLink = resourceMap.mdLink;
       let resourceTypeText = resourceMap.resourceTypeText;
-      if (mdLink){
+      if (mdLink) {
         // 针对保存到块的处理
-        if (resourceTypeText == "image"){
+        if (resourceTypeText == "image") {
           imageLinks += `${mdLink}`;
-          if (imageLayout === IMAGE_LAYOUT.direction && (resource !== resourceList[resourceList.length -1])){
+          if (imageLayout === IMAGE_LAYOUT.direction && (resource !== resourceList[resourceList.length - 1])) {
             imageLinks += "\n";
-          }      
-        }else{
+          }
+        } else {
           resources.push(mdLink);
         }
 
         // 针对保存到文档的处理
         resourceLinks += `${mdLink}`;
-        if (resource !== resourceList[resourceList.length -1]){
+        if (resource !== resourceList[resourceList.length - 1]) {
           resourceLinks += "\n";
         }
       }
@@ -570,17 +570,17 @@ export default class MemosSync extends Plugin {
    * @param pageId - 文档ID
    * @returns 
    */
-  async delEmptyBlock(pageId){
+  async delEmptyBlock(pageId) {
     let response = await api.getChildBlocks(pageId);
     print('response', response);
-    if (!api.isOK(response)){
+    if (!api.isOK(response)) {
       return;
     }
-    
-   
+
+
     let blockList = response.data;
     print('blockList.length', blockList.length)
-    if (blockList.length === 0){
+    if (blockList.length === 0) {
       return;
     }
 
@@ -589,13 +589,13 @@ export default class MemosSync extends Plugin {
 
     let blocks = await this.getBlockContentById(lastBlockId);
     print('blocks', blocks)
-    if (blocks.length === 0){
+    if (blocks.length === 0) {
       return;
     }
 
     let lastBlockContent = blocks[0].content;
     print(lastBlockContent);
-    if (lastBlockContent){
+    if (lastBlockContent) {
       return;
     }
 
@@ -612,7 +612,7 @@ export default class MemosSync extends Plugin {
    */
   async batchHandleContentBlock(pageId, memoObjList) {
     let blockIdMap = {};
-    
+
     for (let memoObj of memoObjList) {
       let memoId = memoObj.memoId;
       let response = await this.handleContentBlock(pageId, memoObj);
@@ -657,18 +657,18 @@ export default class MemosSync extends Plugin {
     let childId = childResponse.data[0].id;
     // 文本
     let contentText = memoObj.contentText;
-    if (contentText){
+    if (contentText) {
       await api.appendBlock(childId, contentText);
     }
     // 图片
     let imageLinks = memoObj.imageLinks;
-    if (imageLinks){
+    if (imageLinks) {
       await api.appendBlock(childId, imageLinks);
     }
     // 其它资源
     let resources = memoObj.resources;
-    if (resources.length > 0){
-      for (let r of resources){
+    if (resources.length > 0) {
+      for (let r of resources) {
         await api.appendBlock(childId, r);
       }
     }
@@ -767,7 +767,7 @@ export default class MemosSync extends Plugin {
    * @param blockId 
    * @returns 
    */
-  async getBlockContentById(blockId){
+  async getBlockContentById(blockId) {
     print('getBlockContentById blockId', blockId);
     let sql = `SELECT * FROM blocks WHERE id="${blockId}";`
     let response = await api.querySql(sql);
@@ -835,19 +835,37 @@ export default class MemosSync extends Plugin {
       await api.pushErrMsg("你选择的笔记本当前不存在！");
     }
 
+    // 排序
+    memoObjList.sort((a, b) => +a.displayts - +b.displayts);
+
     // 保存为页面
     for (let memoObj of memoObjList) {
+      print(memoObj);
       let memoId = memoObj.memoId;
       let title = memoObj.title;
       let path = `${pagePath}/${title}`
-      let md = memoObj.content;
+      let md = (memoObj.contentText) ? memoObj.contentText : "";
       let response = await api.createDocWithMd(notebookId, path, md);
 
-      if (!api.isOK(response)){
+      if (!api.isOK(response)) {
         continue;
       }
 
       let blockId = response.data;
+
+      // 图片
+      let imageLinks = memoObj.imageLinks;
+      if (imageLinks) {
+        await api.appendBlock(blockId, imageLinks);
+      }
+      // 其它资源
+      let resources = memoObj.resources;
+      if (resources.length > 0) {
+        for (let r of resources) {
+          await api.appendBlock(blockId, r);
+        }
+      }
+
       blockIdMaps[memoId] = blockId;
     }
 
@@ -917,7 +935,7 @@ export default class MemosSync extends Plugin {
         this.syncing = false;
         this.topBarElement.innerHTML = getSvgHtml("memos", this.isMobile);
         return;
-      }else{
+      } else {
         await api.pushMsg("同步中，请稍候...");
       }
 
@@ -1089,7 +1107,7 @@ export default class MemosSync extends Plugin {
   async eventBusHandler(detail) {
     await this.checkNew() // 检查 Memos 是否有新数据
   }
-  
+
   async onload() {
     // 获取本地配置
     let conResponse = await api.getLocalStorage();
@@ -1332,7 +1350,7 @@ export default class MemosSync extends Plugin {
     await this.checkNew();
   }
 
-  async openSetting(){
+  async openSetting() {
     this.nowNotebooks = await this.getNotebooks();
     super.openSetting();
   }
