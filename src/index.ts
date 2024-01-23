@@ -152,6 +152,7 @@ export default class MemosSync extends Plugin {
     // 数据写入
     if (isDownloaded) {
       if (syncMode === SYNC_MAP.block) {
+        print("写入块...");
         await this.putBlock(memoObjList, relationList, deleteList);
       } else if (syncMode == SYNC_MAP.page) {
         await this.putPage(memoObjList, relationList);
@@ -492,7 +493,7 @@ export default class MemosSync extends Plugin {
   async searchDailyNote(notebookId: string, date: string): Promise<string> {
     // 获取可读路径
     let hpath = await this.getPastDNHPath(notebookId, date);
-
+    // print('hpath', hpath);
     if (!hpath) {
       return;
     }
@@ -501,15 +502,18 @@ export default class MemosSync extends Plugin {
     let pageId = "";
 
     let response = await api.getIDsByHPath(notebookId, hpath);
-
+    // print('response', response);
     if (!api.isOK(response)) {
       return;
     }
 
     let IDs = response.data;
-    if (IDs === null) {
+    // print('IDs', IDs);
+    if (IDs === null || IDs.length === 0) {
+      // print('notebookId', notebookId);
+      // print('hpath', hpath);
       let response = await api.createDocWithMd(notebookId, hpath, "");
-
+      // print('response', response);
       if (!api.isOK(response)) {
         return;
       }
@@ -518,6 +522,7 @@ export default class MemosSync extends Plugin {
     } else {
       pageId = IDs[0];
     }
+    // print('pageId', pageId);
     return pageId;
   }
 
@@ -572,14 +577,14 @@ export default class MemosSync extends Plugin {
    */
   async delEmptyBlock(pageId) {
     let response = await api.getChildBlocks(pageId);
-    print('response', response);
+    // print('response', response);
     if (!api.isOK(response)) {
       return;
     }
 
 
     let blockList = response.data;
-    print('blockList.length', blockList.length)
+    // print('blockList.length', blockList.length)
     if (blockList.length === 0) {
       return;
     }
@@ -588,19 +593,19 @@ export default class MemosSync extends Plugin {
     let lastBlockId = lastBlock.id;
 
     let blocks = await this.getBlockContentById(lastBlockId);
-    print('blocks', blocks)
+    // print('blocks', blocks)
     if (blocks.length === 0) {
       return;
     }
 
     let lastBlockContent = blocks[0].content;
-    print(lastBlockContent);
+    // print(lastBlockContent);
     if (lastBlockContent) {
       return;
     }
 
     // 删除空内容块
-    print('正在删除空内容块');
+    // print('正在删除空内容块');
     await api.deleteBlock(lastBlockId);
   }
 
@@ -611,10 +616,14 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async batchHandleContentBlock(pageId, memoObjList) {
+    // print('pageId', pageId);
+    // print('memoObjList', memoObjList);
+
     let blockIdMap = {};
 
     for (let memoObj of memoObjList) {
       let memoId = memoObj.memoId;
+      // print("将记录添加到块中...");
       let response = await this.handleContentBlock(pageId, memoObj);
       // print('response', response);
 
@@ -639,9 +648,11 @@ export default class MemosSync extends Plugin {
     let title = memoObj.title;
 
     // 标题写入
+    // print("标题写入...");
     let contentTitle = `* ${title}`;
+    // print('pageId', pageId);
     let response = await api.appendBlock(pageId, contentTitle);
-
+    // print('response:', response);
     if (!api.isOK(response)) {
       return;
     }
@@ -791,10 +802,12 @@ export default class MemosSync extends Plugin {
     }
 
     // 删除旧块
+    print("正在删除旧块...");
     let delIdList = await this.getDelBlockIdList(deleteList);
     if (delIdList.length > 0) {
       await this.batchDeleteBlock(delIdList);
     }
+    print("删除旧块完成！");
 
     // 获取新的表
     let blockIdMaps = await this.getBlockIdMaps();
@@ -803,13 +816,19 @@ export default class MemosSync extends Plugin {
     let groupedData: IGroupedData = await this.groupListByDate(memoObjList, 'dispalyDate');
 
     // 分批写入
+    print("正在分批写入...");
     for (const [dispalyDate, memoObjs] of Object.entries(groupedData)) {
       // 获取文档ID
+      // print("正在根据日期查询是否存在该日的Daily Note...");
       let pageId = await this.searchDailyNote(notebookId, dispalyDate);
+      // print("pageId", pageId);
       memoObjs.sort((a, b) => +a.displayts - +b.displayts);
+      // print("正在将数据批量写入块中...");
       let blockIdMap = await this.batchHandleContentBlock(pageId, memoObjs);
+      // print("写入完成！");
       Object.assign(blockIdMaps, blockIdMap);
     }
+    print("分批写入完成！");
 
     // 引用关联
     await this.relationBlock(relationList, blockIdMaps);
@@ -928,6 +947,7 @@ export default class MemosSync extends Plugin {
       let syncMode = configData.syncMode; // 同步保存方案
 
       // 检查是否有新数据
+      
       let memos = await this.getLatestMemos();
 
       if (memos.addList.length == 0) {
@@ -940,7 +960,9 @@ export default class MemosSync extends Plugin {
       }
 
       // 保存
+      print("调试----");
       let result = await this.saveToSiyuan(memos, syncMode);
+      print(result);
       if (!result) {
         await api.pushErrMsg("同步失败！");
         this.topBarElement.innerHTML = runBeforeSvg; // 报错图标就恢复成之前的状态
