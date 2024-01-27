@@ -34,6 +34,10 @@ const IMAGE_LAYOUT = {
   direction: '0',
   transverse: '1'
 }
+const COMMON = {
+  noUse: '0',
+  use: '1'
+}
 
 let onSyncEndEvent: EventListener;
 
@@ -330,8 +334,18 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   handleTag(content) {
-    const regex = /#.*?(?=\s|#|$)/g;  // 标签匹配规则
-    const result = content.replace(regex, (match) => `${match}# `);
+    const regex = /(?<=#).*?(?=\s|#|$)/g;  // 标签匹配规则
+
+    let configData = this.data[STORAGE_NAME]; // 读取配置
+    let labelName = configData.superLabelText;
+    let result;
+
+    if (configData.superLabelMode === COMMON.use){
+      result = content.replace(regex, (match) => `${labelName}/${match}# `);
+    }else{
+      result = content.replace(regex, (match) => `${match}# `);
+    }
+    // print(result);
     return result;
   }
 
@@ -1028,7 +1042,9 @@ export default class MemosSync extends Plugin {
       notebookId: "",
       pagePath: "",
       markMode: MARK_MAP.blockRef,
-      imageLayout: IMAGE_LAYOUT.direction
+      imageLayout: IMAGE_LAYOUT.direction,
+      superLabelMode: COMMON.noUse,
+      superLabelText: ""
     }
 
     let configData = this.data[STORAGE_NAME];
@@ -1055,7 +1071,8 @@ export default class MemosSync extends Plugin {
       configData.syncMode,
       configData.notebookId,
       configData.markMode,
-      configData.imageLayout
+      configData.imageLayout,
+      configData.superLabelMode
     ]
 
     for (let required of requiredList) {
@@ -1064,6 +1081,14 @@ export default class MemosSync extends Plugin {
         return false;
       }
     }
+
+    if (configData.superLabelMode === COMMON.use){
+      if(!configData.superLabelText){
+        await api.pushErrMsg("请确认必填项是否全部配置！")
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -1162,6 +1187,8 @@ export default class MemosSync extends Plugin {
     let pagePathElement = document.createElement('input');  // 文档路径
     let markModeElement;  // 引用处理方案
     let imageLayoutElement; // 图片布局
+    let superLabelModeElement; // 标签模式
+    let superLabelTextElement = document.createElement('input');  // 上级标签文本
 
     this.setting = new Setting({
       // 配置窗口大小
@@ -1177,10 +1204,18 @@ export default class MemosSync extends Plugin {
           syncModeElement.value,
           notebookIdElement.value,
           markModeElement.value,
-          imageLayoutElement.value
+          imageLayoutElement.value,
+          superLabelModeElement.value
         ]
         for (let required of requiredList) {
           if (!required) {
+            await api.pushErrMsg("请确认必填项是否全部配置！")
+            return;
+          }
+        }
+
+        if (superLabelModeElement.value === COMMON.use){
+          if(!superLabelTextElement.value){
             await api.pushErrMsg("请确认必填项是否全部配置！")
             return;
           }
@@ -1197,6 +1232,8 @@ export default class MemosSync extends Plugin {
         configData.pagePath = pagePathElement.value;
         configData.markMode = markModeElement.value;
         configData.imageLayout = imageLayoutElement.value;
+        configData.superLabelMode = superLabelModeElement.value;
+        configData.superLabelText = superLabelTextElement.value;
 
         await this.saveData(STORAGE_NAME, configData);
 
@@ -1366,6 +1403,45 @@ export default class MemosSync extends Plugin {
         imageLayoutElement.value = this.data[STORAGE_NAME].imageLayout;
         return imageLayoutElement;
       }
+    });
+
+    // 是否使用上级标签
+    this.setting.addItem({
+      title: "是否增加上级标签",
+      description: "为所有的标签增加一个上级标签",
+      createActionElement: () => {
+        superLabelModeElement = document.createElement('select')
+        superLabelModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: COMMON.noUse,
+            text: "否"
+          },
+          {
+            val: COMMON.use,
+            text: "是"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          superLabelModeElement.appendChild(optionElement);
+        }
+        superLabelModeElement.value = this.data[STORAGE_NAME].superLabelMode;
+        return superLabelModeElement;
+      }
+    });
+
+    // 上级标签输入框
+    this.setting.addItem({
+      title: "标签名称",
+      description: "设置上级标签名称，请确认标签开头和结尾没有'/'",
+      createActionElement: () => {
+        superLabelTextElement.className = "b3-text-field fn__size200 fn__flex-center";
+        superLabelTextElement.value = this.data[STORAGE_NAME].superLabelText;
+        return superLabelTextElement;
+      },
     });
 
     // 检查是否有新数据
