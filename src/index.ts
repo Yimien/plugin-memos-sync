@@ -720,13 +720,13 @@ export default class MemosSync extends Plugin {
 
     // 批量写入
     let blockIdMap = await this.batchSaveToSimplePage(pageId, ascMemoObjList);
-    // Object.assign(blockIdMaps, blockIdMap);
+    Object.assign(blockIdMaps, blockIdMap);
 
     // 引用关联
-    // await this.relationBlock(relationList, blockIdMaps);
+    await this.relationBlock(relationList, blockIdMaps);
 
     // 设置块属性
-    // await this.batchSetBlockAttr(blockIdMaps);
+    await this.batchSetBlockAttr(blockIdMaps);
   }
 
   // 数据保存相关工具方法
@@ -804,7 +804,12 @@ export default class MemosSync extends Plugin {
     return response;
   }
 
-  // TODO 批量保存
+  /**
+   * 批量处理数据，保存至单份文档
+   * @param pageId - 页面ID
+   * @param memoObjList - 记录
+   * @returns 
+   */
   async batchSaveToSimplePage(pageId, memoObjList) {
     let blockIdMap = {};
 
@@ -843,6 +848,12 @@ export default class MemosSync extends Plugin {
     return blockIdMap;
   }
 
+  /**
+   * 将一条记录保存至单份文档
+   * @param targetID - 用于定位的块ID
+   * @param memoObj - 记录
+   * @returns 
+   */
   async saveToSimplePage(targetID, memoObj) {
     // 标题写入
     let title = memoObj.title;
