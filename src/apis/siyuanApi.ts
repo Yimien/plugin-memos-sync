@@ -60,6 +60,36 @@ export class SiyuanApi {
             path: path
         });
     }
+    
+    /**
+     * 插入块
+     * @param content - 插入的数据
+     * @param idMap - {nextID: 一个块的ID，用于锚定插入位置, previousID: 前一个块的ID，用于锚定插入位置, parentID: 父块ID，用于锚定插入位置}
+     * @param dataType - 待插入数据类型
+     * @returns 
+     */
+    static async insertBlock(content, idMap, dataType="markdown"){
+        let fetchData = Object.assign({
+            data: content,
+            dataType: dataType
+        }, idMap);
+        return await fetchSyncPost("/api/block/insertBlock", fetchData);
+    }
+
+    /**
+     * 插入前置子块
+     * @param parentID - 父块的 ID，用于锚定插入位置
+     * @param content - 待插入的数据
+     * @param dataType - 待插入数据类型，值可选择 markdown 或者 dom
+     * @returns 
+     */
+    static async prependBlock(parentID: string, content: string, dataType = 'markdown'){
+        return await fetchSyncPost("/api/block/prependBlock", {
+            parentID: parentID,
+            data: content,
+            dataType: dataType
+        });
+    }
 
     /**
      * 在下级块尾部插入块

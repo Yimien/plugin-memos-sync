@@ -85,11 +85,20 @@ export class MemosApi {
     }
 
     /**
-     * 下载资源
+     * 根据ID下载资源
      * @param id - 资源ID
      * @returns 
      */
-    async downloadResource(id){
+    async downloadResourceById(id){
       return await this.fetchGet(`/o/r/${id}`);
+    }
+
+    /**
+     * 根据名称下载资源
+     * @param name 
+     * @returns 
+     */
+    async downloadResourceByName(name){
+      return await this.fetchGet(`/o/r/${name}`);
     }
   }
