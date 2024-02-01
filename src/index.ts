@@ -67,18 +67,18 @@ export default class MemosSync extends Plugin {
   async checkRequired() {
     let configData = this.data[STORAGE_NAME];
 
+    // TODO 必填项补充
     let requiredList = [
-      configData.baseUrl,
-      configData.accessToken,
-      configData.lastSyncTime,
-      configData.syncMode,
-      configData.notebookId,
-      configData.markMode,
-      configData.imageLayout,
-      configData.superLabelMode,
-      configData.resourceDownloadMode,
-      configData.biDirectionalLinksMode,
-      configData.subjectPath
+      configData.baseUrl, // 基础路径
+      configData.accessToken, // 授权码
+      configData.lastSyncTime,  // 上次同步时间
+      configData.syncMode,  // 同步模式
+      configData.notebookId,  // 笔记本
+      configData.markMode,  // 引用处理模式
+      configData.biDirectionalLinksMode, // 是否识别双向链接
+      configData.imageLayout, // 图片布局
+      configData.superLabelMode,  // 是否收束标签
+      configData.resourceDownloadMode  // 资源下载模式
     ]
 
     for (let required of requiredList) {
@@ -88,6 +88,7 @@ export default class MemosSync extends Plugin {
       }
     }
 
+    // 同步至单份文档时，需校验文档路径是否填写
     if (configData.syncMode === sMaps.SYNC_MAP.simple){
       if (!configData.pagePath){
         await sApi.pushErrMsg("请确认必填项是否全部配置！")
@@ -95,6 +96,7 @@ export default class MemosSync extends Plugin {
       }
     }
 
+    // 收束标签时，需校验标签名称是否填写
     if (configData.superLabelMode === sMaps.IS_USE.yes) {
       if (!configData.superLabelText) {
         await sApi.pushErrMsg("请确认必填项是否全部配置！")
@@ -102,6 +104,7 @@ export default class MemosSync extends Plugin {
       }
     }
 
+    // 识别双向链接时，需校验主题路径是否填写
     if (configData.biDirectionalLinksMode === sMaps.IS_USE.yes){
       if (!configData.subjectPath){
         await sApi.pushErrMsg("请确认必填项是否全部配置！")
@@ -1378,16 +1381,16 @@ export default class MemosSync extends Plugin {
       confirmCallback: async () => {
         // 必填项校验
         let requiredList = [
-          baseUrlElement.value,
-          accessTokenElement.value,
-          lastSyncTimeElement.value,
-          syncModeElement.value,
-          notebookIdElement.value,
-          markModeElement.value,
-          imageLayoutElement.value,
-          superLabelModeElement.value,
-          resourceDownloadModeElement.value,
-          biDirectionalLinksModeElement.value
+          baseUrlElement.value, // 基础路径
+          accessTokenElement.value, // 授权码
+          lastSyncTimeElement.value,  // 上次同步时间
+          syncModeElement.value,  // 同步模式
+          notebookIdElement.value,  // 笔记本
+          markModeElement.value,  // 引用处理模式
+          biDirectionalLinksModeElement.value, // 是否识别双向链接
+          imageLayoutElement.value, // 图片布局
+          superLabelModeElement.value,  // 是否收束标签
+          resourceDownloadModeElement.value  // 资源下载模式
         ]
 
         for (let required of requiredList) {
@@ -1397,6 +1400,7 @@ export default class MemosSync extends Plugin {
           }
         }
 
+        // 同步至单份文档时，需校验文档路径是否填写
         if (syncModeElement.value === sMaps.SYNC_MAP.simple){
           if (!pagePathElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
@@ -1404,6 +1408,8 @@ export default class MemosSync extends Plugin {
           }
         }
 
+
+        // 收束标签时，需校验标签名称是否填写
         if (superLabelModeElement.value === sMaps.IS_USE.yes) {
           if (!superLabelTextElement.value) {
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
@@ -1411,6 +1417,7 @@ export default class MemosSync extends Plugin {
           }
         }
 
+        // 识别双向链接时，需校验主题路径是否填写
         if (biDirectionalLinksModeElement.value === sMaps.IS_USE.yes){
           if (!subjectPathElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
