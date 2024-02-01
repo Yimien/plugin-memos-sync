@@ -28,7 +28,7 @@
             "background": "red",
             "icon": "beaker",
             "rulerColour": "red",
-            "iconColour": "red",
+            "iconColour": "red"
         },
         "tag": {
             "background": "blue",
@@ -41,7 +41,7 @@
             "background": "green",
             "icon": "issue-closed",
             "rulerColour": "green",
-            "iconColour": "green",
+            "iconColour": "green"
         },
         "note": {
             "background": "#f90",
