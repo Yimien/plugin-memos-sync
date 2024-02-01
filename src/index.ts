@@ -8,7 +8,7 @@ import "@/index.scss";
 import moment from "moment";
 
 // 调试
-const debug = true;
+const debug = false;
 
 // 固化数据
 const STORAGE_NAME = "memos-sync-config"; // 配置名称
@@ -45,7 +45,9 @@ export default class MemosSync extends Plugin {
       imageLayout: sMaps.IMAGE_LAYOUT.direction,
       superLabelMode: sMaps.IS_USE.no,
       superLabelText: "",
-      resourceDownloadMode: sMaps.RESOURCE_DOWNLOAD_MODE.first
+      resourceDownloadMode: sMaps.RESOURCE_DOWNLOAD_MODE.first,
+      biDirectionalLinksMode: sMaps.IS_USE.no,
+      subjectPath: ""
     }
 
     let configData = this.data[STORAGE_NAME];
@@ -74,7 +76,9 @@ export default class MemosSync extends Plugin {
       configData.markMode,
       configData.imageLayout,
       configData.superLabelMode,
-      configData.resourceDownloadMode
+      configData.resourceDownloadMode,
+      configData.biDirectionalLinksMode,
+      configData.subjectPath
     ]
 
     for (let required of requiredList) {
@@ -84,8 +88,22 @@ export default class MemosSync extends Plugin {
       }
     }
 
+    if (configData.syncMode === sMaps.SYNC_MAP.simple){
+      if (!configData.pagePath){
+        await sApi.pushErrMsg("请确认必填项是否全部配置！")
+        return;
+      }
+    }
+
     if (configData.superLabelMode === sMaps.IS_USE.yes) {
       if (!configData.superLabelText) {
+        await sApi.pushErrMsg("请确认必填项是否全部配置！")
+        return false;
+      }
+    }
+
+    if (configData.biDirectionalLinksMode === sMaps.IS_USE.yes){
+      if (!configData.subjectPath){
         await sApi.pushErrMsg("请确认必填项是否全部配置！")
         return false;
       }
@@ -304,11 +322,11 @@ export default class MemosSync extends Plugin {
       }
 
       // 记录同步时间,间隔1秒
-      // await setTimeout(async () => {
-      //   let nowTimeText = moment().format(FORMAT.datetime);
-      //   this.data[STORAGE_NAME]["lastSyncTime"] = nowTimeText;
-      //   await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
-      // }, 1000)
+      await setTimeout(async () => {
+        let nowTimeText = moment().format(FORMAT.datetime);
+        this.data[STORAGE_NAME]["lastSyncTime"] = nowTimeText;
+        await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+      }, 1000)
 
       // 同步完成
       this.topBarElement.innerHTML = getSvgHtml("memos", this.isMobile);
@@ -362,17 +380,17 @@ export default class MemosSync extends Plugin {
    * @param memos - 记录列表
    * @returns 
    */
-  batchHandleMemos(memos) {
+  async batchHandleMemos(memos) {
     let memoObjList = [];
     let resouceList = [];
     let relationList = [];
 
-    memos.forEach((memo) => {
-      let memoObj = this.handelMemo(memo);
+    for (let memo of memos){
+      let memoObj = await this.handelMemo(memo);
       memoObjList.push(memoObj);
       resouceList = resouceList.concat(memoObj.resourceList);
       relationList = relationList.concat(memoObj.relationList);
-    })
+    }
 
     const relations = Array.from(
       new Map(relationList.map((relation) => [relation.memoId, relation])).values()
@@ -389,7 +407,7 @@ export default class MemosSync extends Plugin {
    * 解析记录
    * @param memo - 记录
    */
-  handelMemo(memo) {
+  async handelMemo(memo) {
     // 获取数据
     let memoId = memo.id;
     let contentText = memo.content;
@@ -407,7 +425,7 @@ export default class MemosSync extends Plugin {
     let resources = resourceMaps.resources;
 
     // 标签处理
-    contentText = this.handleTag(contentText);
+    contentText = await this.handleContent(contentText);
 
     // 文本合并
     let content = `${contentText}\n${resourceLinks}`;
@@ -517,6 +535,61 @@ export default class MemosSync extends Plugin {
       resourceTypeText: resourceTypeText,
       resourceName: resourceName
     };
+  }
+
+  /**
+   * 处理内容
+   * @param content - 内容
+   * @returns 处理后的内容
+   */
+  async handleContent(content){
+    let configData = this.data[STORAGE_NAME]; // 读取配置
+    let biDirectionalLinksMode = configData.biDirectionalLinksMode; // 双链标识
+
+    if (biDirectionalLinksMode === sMaps.IS_USE.yes){
+      if (debug){
+        print("正在处理双向链接...");
+      }
+      content = await this.handleDirectionalLinks(content);
+      if (debug){
+        print("双向链接处理完成！");
+      }
+    }
+
+    if (debug){
+      print("正在处理标签...");
+    }
+    content = await this.handleTag(content);
+    if (debug){
+      print("标签处理完成！");
+    }
+    return content;
+  }
+
+  /**
+   * 处理双链标识
+   * @param content - 内容
+   * @returns - 处理后的内容
+   */
+  async handleDirectionalLinks(content){
+    const regex = /(?<=\(\().*?(?=\)\))/g;  // 仅匹配文档名称
+    if (regex.test(content)){
+      let matchList = content.match(regex);
+      if (debug){
+        print("双向链接正则匹配结果", matchList);
+      }
+      for (let documentName of matchList) {
+        let documentId = await this.getDocumentIdByName(documentName);
+        if (debug){
+          print("当前使用的文档ID", documentId);
+        }
+        content = content.replace(regex, (match) => `${documentId} "${match}"`)
+        if (debug){
+          print("替换后的内容", content);
+        }
+      }
+    }
+    return content;
   }
 
   /**
@@ -947,7 +1020,7 @@ export default class MemosSync extends Plugin {
       if (markMode === sMaps.MARK_MAP.blockEmbed) {
         content = `{{select * from blocks where id="${relatedBlockId}"}}`;
       } else if (markMode === sMaps.MARK_MAP.blockRef) {
-        content = `((${relatedBlockId} "@${relatedMemoId}"))`
+        content = `((${relatedBlockId} "@${relatedMemoId}"))`;
       } else {
         return;
       }
@@ -1223,6 +1296,40 @@ export default class MemosSync extends Plugin {
     return response.data;
   }
 
+  /**
+   * 根据文档块名称获取文档块ID，若不存在则自动新建
+   * @param documentName - 文档块名称
+   * @returns 文档块ID
+   */
+  async getDocumentIdByName(documentName){
+    let configData = this.data[STORAGE_NAME]; // 读取配置
+    let notebookId = configData.notebookId;
+    let subjectPath = configData.subjectPath;
+    let documentBlockId;
+
+    let documentBlockList = await this.getBlockByDocumentName(documentName);
+    if (debug){
+      print("文档块查询结果", documentBlockList);
+    }
+    if (documentBlockList !== null && documentBlockList.length > 0){
+      documentBlockId = documentBlockList[0].id;
+    }else{
+      let path = `${subjectPath}/${documentName}`;
+      documentBlockId = await this.getIdByPath(notebookId, path);  
+    }
+    return documentBlockId
+  }
+
+  /**
+   * 根据文档名称查询文档块
+   * @param name - 名称
+   */
+  async getBlockByDocumentName(name){
+    let sql = `SELECT * FROM blocks WHERE content=${name} && type='d';`
+    let response = await sApi.querySql(sql);
+    return response.data;
+  }
+
   // 官方方法
 
   async onload() {
@@ -1256,6 +1363,8 @@ export default class MemosSync extends Plugin {
     let notebookIdElement;  // 选择笔记本
     let pagePathElement = document.createElement('input');  // 文档路径
     let markModeElement;  // 引用处理方案
+    let biDirectionalLinksModeElement;  // 双向链接符号标识
+    let subjectPathElement = document.createElement('input');  // 用于主题的保存路径
     let imageLayoutElement; // 图片布局
     let superLabelModeElement; // 标签模式
     let superLabelTextElement = document.createElement('input'); // 上级标签文本
@@ -1277,7 +1386,8 @@ export default class MemosSync extends Plugin {
           markModeElement.value,
           imageLayoutElement.value,
           superLabelModeElement.value,
-          resourceDownloadModeElement.value
+          resourceDownloadModeElement.value,
+          biDirectionalLinksModeElement.value
         ]
 
         for (let required of requiredList) {
@@ -1287,8 +1397,22 @@ export default class MemosSync extends Plugin {
           }
         }
 
+        if (syncModeElement.value === sMaps.SYNC_MAP.simple){
+          if (!pagePathElement.value){
+            await sApi.pushErrMsg("请确认必填项是否全部配置！")
+            return;
+          }
+        }
+
         if (superLabelModeElement.value === sMaps.IS_USE.yes) {
           if (!superLabelTextElement.value) {
+            await sApi.pushErrMsg("请确认必填项是否全部配置！")
+            return;
+          }
+        }
+
+        if (biDirectionalLinksModeElement.value === sMaps.IS_USE.yes){
+          if (!subjectPathElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
             return;
           }
@@ -1308,6 +1432,8 @@ export default class MemosSync extends Plugin {
         configData.superLabelMode = superLabelModeElement.value;
         configData.superLabelText = superLabelTextElement.value;
         configData.resourceDownloadMode = resourceDownloadModeElement.value;
+        configData.biDirectionalLinksMode = biDirectionalLinksModeElement.value;
+        configData.subjectPath = subjectPathElement.value;
 
         await this.saveData(STORAGE_NAME, configData);
 
@@ -1334,7 +1460,7 @@ export default class MemosSync extends Plugin {
 
     // 添加基础路径输入框
     this.setting.addItem({
-      title: "服务器地址 <code class='fn__code'>必填项</code>",
+      title: "服务器地址 <code class='fn__code'><font color='red'>必填项</font></code>",
       description: "允许使用域名或者IP地址，地址最后不要保留 '/'",
       createActionElement: () => {
         baseUrlElement.className = "b3-text-field fn__size350 fn__flex-center";
@@ -1345,7 +1471,7 @@ export default class MemosSync extends Plugin {
 
     // 添加授权码输入框
     this.setting.addItem({
-      title: "授权码 <code class='fn__code'>必填项</code>",
+      title: "授权码 <code class='fn__code'><font color='red'>必填项</font></code>",
       description: "请在设置页面获取 Access Token",
       createActionElement: () => {
         accessTokenElement.className = "b3-text-field fn__size350 fn__flex-center";
@@ -1356,7 +1482,7 @@ export default class MemosSync extends Plugin {
 
     // 添加上次同步时间输入框
     this.setting.addItem({
-      title: "上次同步时间 <code class='fn__code'>必填项</code>",
+      title: "上次同步时间 <code class='fn__code'><font color='red'>必填项</font></code>",
       description: `同步完成后会自动更新，如有特殊需要可以手动修改`,
       createActionElement: () => {
         lastSyncTimeElement.className = "b3-text-field fn__size200 fn__flex-center fn__block";
@@ -1367,15 +1493,15 @@ export default class MemosSync extends Plugin {
 
     // 添加同步方案下拉框
     this.setting.addItem({
-      title: "同步方案 <code class='fn__code'>必填项</code>",
-      description: "1. 同步至 Daily Note：需要配置笔记本，文档路径无效<br>2. 同步至笔记本或文档下：需要配置笔记本，如需保存至指定文档下需要配置文档路径<br>3. 同步至单个文档中：需要配置笔记本和文档路径",
+      title: "同步方案 <code class='fn__code'><font color='red'>必填项</font></code>",
+      description: "1. 同步至 Daily Notes：需要配置笔记本，文档路径无效<br>2. 同步至笔记本或文档下：需要配置笔记本，如需保存至指定文档下需要配置文档路径<br>3. 同步至单个文档中：需要配置笔记本和文档路径",
       createActionElement: () => {
         syncModeElement = document.createElement('select')
         syncModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
             value: sMaps.SYNC_MAP.block,
-            text: "同步至 Daily Note"
+            text: "同步至 Daily Notes"
           },
           {
             value: sMaps.SYNC_MAP.page,
@@ -1400,7 +1526,7 @@ export default class MemosSync extends Plugin {
     // 添加笔记本下拉框
     this.nowNotebooks = await this.getNotebooks();
     this.setting.addItem({
-      title: "笔记本 <code class='fn__code'>必填项</code>",
+      title: "笔记本 <code class='fn__code'><font color='red'>必填项</font></code>",
       description: "选择保存的笔记本",
       createActionElement: () => {
         notebookIdElement = document.createElement('select')
@@ -1430,7 +1556,7 @@ export default class MemosSync extends Plugin {
 
     // 添加引用处理方案下拉框
     this.setting.addItem({
-      title: "引用处理方案 <code class='fn__code'>必填项</code>",
+      title: "引用处理方案",
       description: "Memos的引用在思源的保存方案处理",
       createActionElement: () => {
         markModeElement = document.createElement('select')
@@ -1458,7 +1584,7 @@ export default class MemosSync extends Plugin {
 
     // 图片布局处理方案
     this.setting.addItem({
-      title: "图片块布局 <code class='fn__code'>必填项</code>",
+      title: "图片块布局",
       description: "Memos的图片在思源的保存方案处理",
       createActionElement: () => {
         imageLayoutElement = document.createElement('select')
@@ -1484,9 +1610,48 @@ export default class MemosSync extends Plugin {
       }
     });
 
+    // 识别双链符号控件
+    this.setting.addItem({
+      title: "是否识别双向链接符号",
+      description: "识别双向链接符号并自动关联文档<br><font color='red'>请注意：只支持文档块的匹配</fonts>",
+      createActionElement: () => {
+        biDirectionalLinksModeElement = document.createElement('select')
+        biDirectionalLinksModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.IS_USE.no,
+            text: "否"
+          },
+          {
+            val: sMaps.IS_USE.yes,
+            text: "是"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          biDirectionalLinksModeElement.appendChild(optionElement);
+        }
+        biDirectionalLinksModeElement.value = this.data[STORAGE_NAME].biDirectionalLinksMode;
+        return biDirectionalLinksModeElement;
+      }
+    });
+    
+    // 主题路径
+    this.setting.addItem({
+      title: "主题路径",
+      description: "保存自动创建的主题文档路径，请以'/'开头进行填写",
+      createActionElement: () => {
+        subjectPathElement.className = "b3-text-field fn__size200 fn__flex-center";
+        subjectPathElement.value = this.data[STORAGE_NAME].subjectPath;
+        return subjectPathElement;
+      },
+    });
+
     // 是否使用上级标签
     this.setting.addItem({
-      title: "是否增加上级标签 <code class='fn__code'>必填项</code>",
+      title: "是否增加上级标签",
       description: "为所有的标签增加一个上级标签",
       createActionElement: () => {
         superLabelModeElement = document.createElement('select')
@@ -1525,8 +1690,8 @@ export default class MemosSync extends Plugin {
 
     // 资源下载方式
     this.setting.addItem({
-      title: "资源下载方式",
-      description: "当第一种模式无法下载资源时请选择使用第二种模式",
+      title: "资源下载模式",
+      description: "当资源无法正确显示或下载时请选择使用第二种模式",
       createActionElement: () => {
         resourceDownloadModeElement = document.createElement('select')
         resourceDownloadModeElement.className = "b3-select fn__flex-center fn__size200";

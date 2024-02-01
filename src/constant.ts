@@ -7,7 +7,7 @@ export const sMaps = {
 
     // 同步保存方案
     SYNC_MAP: {
-        block: "0", // 同步至 Daily Note
+        block: "0", // 同步至 Daily Notes
         page: "1",  // 同步至笔记本或文档下
         simple: "2" // 同步至单份文档中
     },
