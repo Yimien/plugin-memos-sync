@@ -67,7 +67,7 @@ export default class MemosSync extends Plugin {
   async checkRequired() {
     let configData = this.data[STORAGE_NAME];
 
-    // TODO 必填项补充
+    // 必填项
     let requiredList = [
       configData.baseUrl, // 基础路径
       configData.accessToken, // 授权码
@@ -91,7 +91,7 @@ export default class MemosSync extends Plugin {
     // 同步至单份文档时，需校验文档路径是否填写
     if (configData.syncMode === sMaps.SYNC_MAP.simple){
       if (!configData.pagePath){
-        await sApi.pushErrMsg("请确认必填项是否全部配置！")
+        await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return;
       }
     }
@@ -99,18 +99,18 @@ export default class MemosSync extends Plugin {
     // 收束标签时，需校验标签名称是否填写
     if (configData.superLabelMode === sMaps.IS_USE.yes) {
       if (!configData.superLabelText) {
-        await sApi.pushErrMsg("请确认必填项是否全部配置！")
+        await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return false;
       }
     }
 
     // 识别双向链接时，需校验主题路径是否填写
-    if (configData.biDirectionalLinksMode === sMaps.IS_USE.yes){
-      if (!configData.subjectPath){
-        await sApi.pushErrMsg("请确认必填项是否全部配置！")
-        return false;
-      }
-    }
+    // if (configData.biDirectionalLinksMode === sMaps.IS_USE.yes){
+    //   if (!configData.subjectPath){
+    //     await sApi.pushErrMsg("请确认必填项是否全部配置！")
+    //     return false;
+    //   }
+    // }
 
     return true;
   }
@@ -1418,12 +1418,12 @@ export default class MemosSync extends Plugin {
         }
 
         // 识别双向链接时，需校验主题路径是否填写
-        if (biDirectionalLinksModeElement.value === sMaps.IS_USE.yes){
-          if (!subjectPathElement.value){
-            await sApi.pushErrMsg("请确认必填项是否全部配置！")
-            return;
-          }
-        }
+        // if (biDirectionalLinksModeElement.value === sMaps.IS_USE.yes){
+        //   if (!subjectPathElement.value){
+        //     await sApi.pushErrMsg("请确认必填项是否全部配置！")
+        //     return;
+        //   }
+        // }
 
         // 保存设置数据
         let configData = this.data[STORAGE_NAME];
@@ -1467,7 +1467,7 @@ export default class MemosSync extends Plugin {
 
     // 添加基础路径输入框
     this.setting.addItem({
-      title: "服务器地址 <code class='fn__code'><font color='red'>必填项</font></code>",
+      title: "服务器地址 <font color='red'>*</font>",
       description: "允许使用域名或者IP地址，地址最后不要保留 '/'",
       createActionElement: () => {
         baseUrlElement.className = "b3-text-field fn__size350 fn__flex-center";
@@ -1478,7 +1478,7 @@ export default class MemosSync extends Plugin {
 
     // 添加授权码输入框
     this.setting.addItem({
-      title: "授权码 <code class='fn__code'><font color='red'>必填项</font></code>",
+      title: "授权码 <font color='red'>*</font>",
       description: "请在设置页面获取 Access Token",
       createActionElement: () => {
         accessTokenElement.className = "b3-text-field fn__size350 fn__flex-center";
@@ -1489,7 +1489,7 @@ export default class MemosSync extends Plugin {
 
     // 添加上次同步时间输入框
     this.setting.addItem({
-      title: "上次同步时间 <code class='fn__code'><font color='red'>必填项</font></code>",
+      title: "上次同步时间 <font color='red'>*</font>",
       description: `同步完成后会自动更新，如有特殊需要可以手动修改`,
       createActionElement: () => {
         lastSyncTimeElement.className = "b3-text-field fn__size200 fn__flex-center fn__block";
@@ -1500,7 +1500,7 @@ export default class MemosSync extends Plugin {
 
     // 添加同步方案下拉框
     this.setting.addItem({
-      title: "同步方案 <code class='fn__code'><font color='red'>必填项</font></code>",
+      title: "同步方案 <font color='red'>*</font>",
       description: "1. 同步至 Daily Notes：需要配置笔记本，文档路径无效<br>2. 同步至笔记本或文档下：需要配置笔记本，如需保存至指定文档下需要配置文档路径<br>3. 同步至单个文档中：需要配置笔记本和文档路径",
       createActionElement: () => {
         syncModeElement = document.createElement('select')
@@ -1533,7 +1533,7 @@ export default class MemosSync extends Plugin {
     // 添加笔记本下拉框
     this.nowNotebooks = await this.getNotebooks();
     this.setting.addItem({
-      title: "笔记本 <code class='fn__code'><font color='red'>必填项</font></code>",
+      title: "同步笔记本 <font color='red'>*</font>",
       description: "选择保存的笔记本",
       createActionElement: () => {
         notebookIdElement = document.createElement('select')
@@ -1553,7 +1553,7 @@ export default class MemosSync extends Plugin {
     // 添加文档路径输入框
     this.setting.addItem({
       title: "文档路径",
-      description: "如需保存至指定文档下，请以'/'开头进行填写",
+      description: "如需保存至指定文档下，请以'/'开头进行填写<br><font color='red'>请注意：当同步至单份文档中时，此项必填</fonts>",
       createActionElement: () => {
         pagePathElement.className = "b3-text-field fn__size200 fn__flex-center";
         pagePathElement.value = this.data[STORAGE_NAME].pagePath;
@@ -1563,7 +1563,7 @@ export default class MemosSync extends Plugin {
 
     // 添加引用处理方案下拉框
     this.setting.addItem({
-      title: "引用处理方案",
+      title: "引用处理方案 <font color='red'>*</font>",
       description: "Memos的引用在思源的保存方案处理",
       createActionElement: () => {
         markModeElement = document.createElement('select')
@@ -1591,7 +1591,7 @@ export default class MemosSync extends Plugin {
 
     // 图片布局处理方案
     this.setting.addItem({
-      title: "图片块布局",
+      title: "图片块布局 <font color='red'>*</font>",
       description: "Memos的图片在思源的保存方案处理",
       createActionElement: () => {
         imageLayoutElement = document.createElement('select')
@@ -1619,8 +1619,8 @@ export default class MemosSync extends Plugin {
 
     // 识别双链符号控件
     this.setting.addItem({
-      title: "是否识别双向链接符号",
-      description: "识别双向链接符号并自动关联文档<br><font color='red'>请注意：只支持文档块的匹配</fonts>",
+      title: "是否识别双向链接符号 <font color='red'>*</font>",
+      description: "识别双向链接符号并自动关联文档<br><font color='blue'>请注意：只支持文档块的匹配</fonts>",
       createActionElement: () => {
         biDirectionalLinksModeElement = document.createElement('select')
         biDirectionalLinksModeElement.className = "b3-select fn__flex-center fn__size200";
@@ -1648,7 +1648,7 @@ export default class MemosSync extends Plugin {
     // 主题路径
     this.setting.addItem({
       title: "主题路径",
-      description: "保存自动创建的主题文档路径，请以'/'开头进行填写",
+      description: "配置保存识别双向链接时自动创建的文档路径，请以'/'开头进行填写<br><font color='blue'>请注意：若本项为空，则自动创建的文档会直接保存在同步笔记本下</fonts>",
       createActionElement: () => {
         subjectPathElement.className = "b3-text-field fn__size200 fn__flex-center";
         subjectPathElement.value = this.data[STORAGE_NAME].subjectPath;
@@ -1658,7 +1658,7 @@ export default class MemosSync extends Plugin {
 
     // 是否使用上级标签
     this.setting.addItem({
-      title: "是否增加上级标签",
+      title: "是否增加上级标签 <font color='red'>*</font>",
       description: "为所有的标签增加一个上级标签",
       createActionElement: () => {
         superLabelModeElement = document.createElement('select')
@@ -1687,7 +1687,7 @@ export default class MemosSync extends Plugin {
     // 上级标签输入框
     this.setting.addItem({
       title: "标签名称",
-      description: "设置上级标签名称，请确认标签开头和结尾没有'/'",
+      description: "设置上级标签名称，请确认标签开头和结尾没有'/'<br><font color='red'>请注意：当需要增加上级标签时，此项必填</fonts>",
       createActionElement: () => {
         superLabelTextElement.className = "b3-text-field fn__size200 fn__flex-center";
         superLabelTextElement.value = this.data[STORAGE_NAME].superLabelText;
@@ -1697,7 +1697,7 @@ export default class MemosSync extends Plugin {
 
     // 资源下载方式
     this.setting.addItem({
-      title: "资源下载模式",
+      title: "资源下载模式 <font color='red'>*</font>",
       description: "当资源无法正确显示或下载时请选择使用第二种模式",
       createActionElement: () => {
         resourceDownloadModeElement = document.createElement('select')
