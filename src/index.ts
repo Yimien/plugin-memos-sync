@@ -8,7 +8,7 @@ import "@/index.scss";
 import moment from "moment";
 
 // 调试
-const debug = false;
+const debug = true;
 
 // 固化数据
 const STORAGE_NAME = "memos-sync-config"; // 配置名称
@@ -586,11 +586,14 @@ export default class MemosSync extends Plugin {
         if (debug){
           print("当前使用的文档ID", documentId);
         }
-        content = content.replace(regex, (match) => `${documentId} "${match}"`)
+        content = content.replace(`((${documentName}))`, (match) => `((${documentId} "${match}"))`)
         if (debug){
           print("替换后的内容", content);
         }
       }
+    }
+    if (debug){
+      print("替换结果", content);
     }
     return content;
   }
