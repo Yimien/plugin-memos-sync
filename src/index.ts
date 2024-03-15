@@ -251,7 +251,7 @@ export default class MemosSync extends Plugin {
         let noMore = records.length < LIMIT;
 
         // 需要添加的记录
-        let addList = records.filter(item => item.displayTs > latest_updated_at_timestamp);
+        let addList = records.filter(item => item.updatedTs > latest_updated_at_timestamp);
         let deleteList = records.filter(item => {
           // 获取每个字典的创建时间和更新时间
           let createdTime = item.createdTs;
