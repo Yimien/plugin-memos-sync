@@ -8,7 +8,7 @@ import "@/index.scss";
 import moment from "moment";
 
 // 调试
-const debug = true;
+const debug = false;
 
 // 固化数据
 const STORAGE_NAME = "memos-sync-config"; // 配置名称
@@ -27,6 +27,7 @@ export default class MemosSync extends Plugin {
   private syncing: boolean = false;
   private memosService;
   private nowNotebooks;
+  private videoFormatList;
 
   /**
    * 初始化数据
@@ -45,9 +46,11 @@ export default class MemosSync extends Plugin {
       imageLayout: sMaps.IMAGE_LAYOUT.direction,
       superLabelMode: sMaps.IS_USE.no,
       superLabelText: "",
-      resourceDownloadMode: sMaps.RESOURCE_DOWNLOAD_MODE.first,
+      resourceDownloadMode: sMaps.RESOURCE_DOWNLOAD_MODE.second,
       biDirectionalLinksMode: sMaps.IS_USE.no,
-      subjectPath: ""
+      subjectPath: "",
+      videoShowMode: sMaps.IS_USE.yes,
+      videoFormatText: "mp4"
     }
 
     let configData = this.data[STORAGE_NAME];
@@ -58,6 +61,8 @@ export default class MemosSync extends Plugin {
     }
 
     this.memosService = new mApi(configData.baseUrl, configData.accessToken);
+    this.videoFormatList = configData.videoFormatText.split(";");
+    // print(this.videoFormatList);
   }
 
   /**
@@ -78,7 +83,8 @@ export default class MemosSync extends Plugin {
       configData.biDirectionalLinksMode, // 是否识别双向链接
       configData.imageLayout, // 图片布局
       configData.superLabelMode,  // 是否收束标签
-      configData.resourceDownloadMode  // 资源下载模式
+      configData.resourceDownloadMode,  // 资源下载模式
+      configData.videoShowMode  // 视频显示优化
     ]
 
     for (let required of requiredList) {
@@ -99,6 +105,14 @@ export default class MemosSync extends Plugin {
     // 收束标签时，需校验标签名称是否填写
     if (configData.superLabelMode === sMaps.IS_USE.yes) {
       if (!configData.superLabelText) {
+        await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
+        return false;
+      }
+    }
+
+    // 优化视频样式时，需校验视频格式是否填写
+    if (configData.videoShowMode === sMaps.IS_USE.yes){
+      if (!configData.videoFormatText) {
         await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return false;
       }
@@ -323,14 +337,16 @@ export default class MemosSync extends Plugin {
         this.syncing = false;
         return;
       }
-
-      // 记录同步时间,间隔1秒
-      await setTimeout(async () => {
-        let nowTimeText = moment().format(FORMAT.datetime);
-        this.data[STORAGE_NAME]["lastSyncTime"] = nowTimeText;
-        await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
-      }, 1000)
-
+      
+      if (!debug){
+        // 记录同步时间,间隔1秒
+        await setTimeout(async () => {
+          let nowTimeText = moment().format(FORMAT.datetime);
+          this.data[STORAGE_NAME]["lastSyncTime"] = nowTimeText;
+          await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+        }, 1000)
+      }
+      
       // 同步完成
       this.topBarElement.innerHTML = getSvgHtml("memos", this.isMobile);
       await sApi.pushMsg("同步完成！")
@@ -497,9 +513,14 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   handleResource(resource) {
+    let configData = this.data[STORAGE_NAME];
+    let videoShowMode = configData.videoShowMode;
+
     // 获取数据
     let resourceType = resource.type;
-    let resourceTypeText = resourceType.split('/')[0]; // 资源类型
+    let resourceTypeList = resourceType.split('/');
+    let resourceTypeText = resourceTypeList[0]; // 资源类型
+    let resourceFormat = resourceTypeList[1];
     let resourceFilename = resource.filename; // 资源文件名称
     let resourceName = resource.name; // 资源名称
     let resourceId = resource.id; // 资源ID
@@ -528,7 +549,28 @@ export default class MemosSync extends Plugin {
     }
 
     // 生成符合MD格式的文本
-    let mdLink = (resourceTypeText == 'image') ? `![${resourceFilename}](${link})` : `[${resourceFilename}](${link})`;
+    let mdLink = "";
+    if (videoShowMode === sMaps.IS_USE.yes){
+      if (resourceTypeText == 'image'){
+        if(debug){
+          print("正在生成图片链接");
+        }
+        mdLink = `![${resourceFilename}](${link})`;
+      }else if(this.videoFormatList.includes(resourceFormat)){
+        if(debug){
+          print(`正在生成视频链接: ${link}`);
+        }
+        mdLink = `<video controls='controls' src='${link}' data-src='${link}' style='width: 1384px; height: 723px;'></video>`
+      }else{
+        if(debug){
+          print("正在生成文件链接");
+        }
+        mdLink = `[${resourceFilename}](${link})`;
+      }
+    }else{
+      mdLink = (resourceTypeText == 'image') ? `![${resourceFilename}](${link})` : `[${resourceFilename}](${link})`;
+    }
+    
     // print('mdLink', mdLink);
 
     return {
@@ -1375,6 +1417,8 @@ export default class MemosSync extends Plugin {
     let superLabelModeElement; // 标签模式
     let superLabelTextElement = document.createElement('input'); // 上级标签文本
     let resourceDownloadModeElement; // 资源下载模式
+    let videoShowModeElement; // 视频显示方式
+    let videoFormatTextElement = document.createElement('textarea');  // 优化的视频格式
 
     this.setting = new Setting({
       // 配置窗口大小
@@ -1393,7 +1437,8 @@ export default class MemosSync extends Plugin {
           biDirectionalLinksModeElement.value, // 是否识别双向链接
           imageLayoutElement.value, // 图片布局
           superLabelModeElement.value,  // 是否收束标签
-          resourceDownloadModeElement.value  // 资源下载模式
+          resourceDownloadModeElement.value,  // 资源下载模式
+          videoShowModeElement.value  // 视频显示方式
         ]
 
         for (let required of requiredList) {
@@ -1411,7 +1456,6 @@ export default class MemosSync extends Plugin {
           }
         }
 
-
         // 收束标签时，需校验标签名称是否填写
         if (superLabelModeElement.value === sMaps.IS_USE.yes) {
           if (!superLabelTextElement.value) {
@@ -1427,6 +1471,14 @@ export default class MemosSync extends Plugin {
         //     return;
         //   }
         // }
+
+        // 
+        if (videoShowModeElement.value === sMaps.IS_USE.yes){
+          if (!videoFormatTextElement.value){
+            await sApi.pushErrMsg("请确认必填项是否全部配置！")
+            return;
+          }
+        }
 
         // 保存设置数据
         let configData = this.data[STORAGE_NAME];
@@ -1444,12 +1496,19 @@ export default class MemosSync extends Plugin {
         configData.resourceDownloadMode = resourceDownloadModeElement.value;
         configData.biDirectionalLinksMode = biDirectionalLinksModeElement.value;
         configData.subjectPath = subjectPathElement.value;
+        configData.videoShowMode = videoShowModeElement.value;
+        configData.videoFormatText = videoFormatTextElement.value;
 
         await this.saveData(STORAGE_NAME, configData);
 
         // 生成Memos对象
         this.memosService = new mApi(configData.baseUrl, configData.accessToken);
       }
+    });
+
+    // 基础设置
+    this.setting.addItem({
+      title: "<div align='center'><font size='4' color='#6950a1'>✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦&nbsp;&nbsp;基础设置&nbsp;&nbsp;✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦</font></div>",
     });
 
     // 添加校验按钮
@@ -1564,60 +1623,9 @@ export default class MemosSync extends Plugin {
       },
     });
 
-    // 添加引用处理方案下拉框
+    // 高级设置
     this.setting.addItem({
-      title: "引用处理方案 <font color='red'>*</font>",
-      description: "Memos的引用在思源的保存方案处理",
-      createActionElement: () => {
-        markModeElement = document.createElement('select')
-        markModeElement.className = "b3-select fn__flex-center fn__size200";
-        let options = [
-          {
-            val: sMaps.MARK_MAP.blockRef,
-            text: "引用块"
-          },
-          {
-            val: sMaps.MARK_MAP.blockEmbed,
-            text: "嵌入块"
-          }
-        ]
-        for (let option of options) {
-          let optionElement = document.createElement('option');
-          optionElement.value = option.val;
-          optionElement.text = option.text;
-          markModeElement.appendChild(optionElement);
-        }
-        markModeElement.value = this.data[STORAGE_NAME].markMode;
-        return markModeElement;
-      }
-    });
-
-    // 图片布局处理方案
-    this.setting.addItem({
-      title: "图片块布局 <font color='red'>*</font>",
-      description: "Memos的图片在思源的保存方案处理",
-      createActionElement: () => {
-        imageLayoutElement = document.createElement('select')
-        imageLayoutElement.className = "b3-select fn__flex-center fn__size200";
-        let options = [
-          {
-            val: sMaps.IMAGE_LAYOUT.direction,
-            text: "纵向布局"
-          },
-          {
-            val: sMaps.IMAGE_LAYOUT.transverse,
-            text: "横向布局"
-          }
-        ]
-        for (let option of options) {
-          let optionElement = document.createElement('option');
-          optionElement.value = option.val;
-          optionElement.text = option.text;
-          imageLayoutElement.appendChild(optionElement);
-        }
-        imageLayoutElement.value = this.data[STORAGE_NAME].imageLayout;
-        return imageLayoutElement;
-      }
+      title: "<div align='center'><font size='4' color='#6950a1'>✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦&nbsp;&nbsp;高级设置&nbsp;&nbsp;✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦</font></div>",
     });
 
     // 识别双链符号控件
@@ -1698,10 +1706,66 @@ export default class MemosSync extends Plugin {
       },
     });
 
+    // 添加引用处理方案下拉框
+    this.setting.addItem({
+      title: "引用处理方案",
+      description: "Memos的引用在思源的保存方案处理",
+      createActionElement: () => {
+        markModeElement = document.createElement('select')
+        markModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.MARK_MAP.blockRef,
+            text: "引用块"
+          },
+          {
+            val: sMaps.MARK_MAP.blockEmbed,
+            text: "嵌入块"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          markModeElement.appendChild(optionElement);
+        }
+        markModeElement.value = this.data[STORAGE_NAME].markMode;
+        return markModeElement;
+      }
+    });
+
+    // 图片布局处理方案
+    this.setting.addItem({
+      title: "图片块布局",
+      description: "Memos的图片在思源的保存方案处理",
+      createActionElement: () => {
+        imageLayoutElement = document.createElement('select')
+        imageLayoutElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.IMAGE_LAYOUT.direction,
+            text: "纵向布局"
+          },
+          {
+            val: sMaps.IMAGE_LAYOUT.transverse,
+            text: "横向布局"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          imageLayoutElement.appendChild(optionElement);
+        }
+        imageLayoutElement.value = this.data[STORAGE_NAME].imageLayout;
+        return imageLayoutElement;
+      }
+    });
+
     // 资源下载方式
     this.setting.addItem({
-      title: "资源下载模式 <font color='red'>*</font>",
-      description: "当资源无法正确显示或下载时请选择使用第二种模式",
+      title: "资源下载模式",
+      description: "当资源（图片）无法正确显示或下载时请选择使用第二种模式",
       createActionElement: () => {
         resourceDownloadModeElement = document.createElement('select')
         resourceDownloadModeElement.className = "b3-select fn__flex-center fn__size200";
@@ -1725,6 +1789,46 @@ export default class MemosSync extends Plugin {
         return resourceDownloadModeElement;
       }
     });
+
+    // 是否优化视频样式
+    this.setting.addItem({
+      title: "是否优化视频样式",
+      description: "将视频格式的文件优化成可点击播放的样式",
+      createActionElement: () => {
+        videoShowModeElement = document.createElement('select')
+        videoShowModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.IS_USE.no,
+            text: "否"
+          },
+          {
+            val: sMaps.IS_USE.yes,
+            text: "是"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          videoShowModeElement.appendChild(optionElement);
+        }
+        videoShowModeElement.value = this.data[STORAGE_NAME].videoShowMode;
+        return videoShowModeElement;
+      },
+    });
+
+    // 支持优化的视频格式
+    this.setting.addItem({
+      title: "优化的视频格式",
+      description: "需要优化的视频格式，用';'分隔<br><font color='red'>请注意：当需要优化视频样式时，此项必填</fonts>",
+      createActionElement: () => {
+        videoFormatTextElement.className = "b3-text-field fn__block fn__testarea";
+        videoFormatTextElement.value = this.data[STORAGE_NAME].videoFormatText;
+        return videoFormatTextElement;
+      },
+    });
+
 
     await this.checkNew();  // 检查是否有新数据
   }
