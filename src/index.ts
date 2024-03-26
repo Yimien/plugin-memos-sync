@@ -1423,7 +1423,7 @@ export default class MemosSync extends Plugin {
     this.setting = new Setting({
       // 配置窗口大小
       width: '800px',
-      height: '670px',
+      height: '770px',
 
       confirmCallback: async () => {
         // 必填项校验
