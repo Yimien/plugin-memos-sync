@@ -28,5 +28,11 @@ export const sMaps = {
     RESOURCE_DOWNLOAD_MODE: {
         first: '1',
         second: '2'
+    },
+
+    // 标签匹配范围
+    TAGS_AREA: {
+        full: '1',
+        last: '2'
     }
 }
