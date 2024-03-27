@@ -7,9 +7,6 @@ import { Plugin, Setting, getFrontend } from "siyuan";
 import "@/index.scss";
 import moment from "moment";
 
-// 调试
-const debug = false;
-
 // 固化数据
 const STORAGE_NAME = "memos-sync-config"; // 配置名称
 const MEMOS_ASSETS_DIR = "assets/memos";  // 文件存储路径
@@ -28,11 +25,38 @@ export default class MemosSync extends Plugin {
   private memosService;
   private nowNotebooks;
   private videoFormatList;
+  private isDebug;
+  private isUpdateSyncTime;
+  private tagsAreaMode;
+
+  async debugTest(...args){
+    if (this.isDebug === sMaps.IS_USE.yes){
+      print(...args);
+    }
+  }
+
+  async updateClassValue(configData){
+    this.debugTest('正在更新实例属性...');
+
+    this.videoFormatList = configData.videoFormatText.split(";");
+    this.isDebug = configData.debugMode;
+    this.isUpdateSyncTime = configData.updateSyncTime;
+    this.tagsAreaMode = configData.tagsArea;
+
+    this.debugTest('videoFormatList:', this.videoFormatList);
+    this.debugTest('isDebug:', this.isDebug);
+    this.debugTest('isUpdateSyncTime:', this.isUpdateSyncTime);
+    this.debugTest('tagsAreaMode:', this.tagsAreaMode);
+
+    this.debugTest('更新完成。')
+  }
 
   /**
    * 初始化数据
    */
   async initData() {
+    this.debugTest('正在初始化数据...');
+
     this.data[STORAGE_NAME] = await this.loadData(STORAGE_NAME) || {};
 
     let defaultConfig = {
@@ -50,7 +74,10 @@ export default class MemosSync extends Plugin {
       biDirectionalLinksMode: sMaps.IS_USE.no,
       subjectPath: "",
       videoShowMode: sMaps.IS_USE.yes,
-      videoFormatText: "mp4"
+      videoFormatText: "mp4",
+      debugMode: sMaps.IS_USE.no,
+      updateSyncTime: sMaps.IS_USE.no,
+      tagsArea: sMaps.TAGS_AREA.last
     }
 
     let configData = this.data[STORAGE_NAME];
@@ -61,8 +88,11 @@ export default class MemosSync extends Plugin {
     }
 
     this.memosService = new mApi(configData.baseUrl, configData.accessToken);
-    this.videoFormatList = configData.videoFormatText.split(";");
-    // print(this.videoFormatList);
+
+    // 更新变量
+    this.updateClassValue(configData);
+
+    this.debugTest('初始化数据完成！');
   }
 
   /**
@@ -70,6 +100,8 @@ export default class MemosSync extends Plugin {
    * @returns
    */
   async checkRequired() {
+    this.debugTest(`正在检查必填项...`);
+
     let configData = this.data[STORAGE_NAME];
 
     // 必填项
@@ -84,7 +116,9 @@ export default class MemosSync extends Plugin {
       configData.imageLayout, // 图片布局
       configData.superLabelMode,  // 是否收束标签
       configData.resourceDownloadMode,  // 资源下载模式
-      configData.videoShowMode  // 视频显示优化
+      configData.tagsArea, // 标签匹配范围
+      configData.videoShowMode,  // 视频显示优化
+      configData.debugMode // 调试模式
     ]
 
     for (let required of requiredList) {
@@ -118,13 +152,14 @@ export default class MemosSync extends Plugin {
       }
     }
 
-    // 识别双向链接时，需校验主题路径是否填写
-    // if (configData.biDirectionalLinksMode === sMaps.IS_USE.yes){
-    //   if (!configData.subjectPath){
-    //     await sApi.pushErrMsg("请确认必填项是否全部配置！")
-    //     return false;
-    //   }
-    // }
+    if (configData.debugMode === sMaps.IS_USE.yes){
+      if (!configData.updateSyncTime){
+        await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
+        return false;
+      }
+    }
+
+    this.debugTest(`检查完成！`)
 
     return true;
   }
@@ -137,6 +172,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async checkAccessToken(baseUrl = "", accessToken = "", isShow = false) {
+    this.debugTest(`正在校验 Access Token...`);
+
     let configData = this.data[STORAGE_NAME];
 
     baseUrl = (baseUrl === "") ? configData.baseUrl : baseUrl;
@@ -181,6 +218,8 @@ export default class MemosSync extends Plugin {
     } catch (error) {
       await sApi.pushErrMsg(`plugin-memos-sync: ${error}`);
       throw new Error(`${error}`);
+    }finally{
+      this.debugTest(`校验完成！`);
     }
   }
 
@@ -189,20 +228,30 @@ export default class MemosSync extends Plugin {
    * @returns {boolean}
    */
   async checkBeforeSync() {
+    this.debugTest(`正在进行同步前检查...`);
+
     let requiredIsOk = await this.checkRequired();
     let tokenIsOk = await this.checkAccessToken();
-    return (requiredIsOk && tokenIsOk) ? true : false;
+
+    let result = (requiredIsOk && tokenIsOk) ? true : false
+
+    this.debugTest(`检查结果:`, result);
+    return result;
   }
 
   /**
    * 检查是否有数据要更新，有则改变图标
    */
   async checkNew() {
+    this.debugTest(`正在检查是否有更新...`);
+
     let isReady = await this.checkBeforeSync();
     let memos = await this.getLatestMemos();
     if (isReady && memos.addList.length > 0) {
       this.topBarElement.innerHTML = getSvgHtml("new", this.isMobile);
     }
+
+    this.debugTest(`检查完成！`);
   }
 
   /**
@@ -218,6 +267,8 @@ export default class MemosSync extends Plugin {
    * @returns
    */
   async getLatestMemos() {
+    this.debugTest(`正在获取 Memos 最新数据...`);
+
     // 读取配置
     let configData = this.data[STORAGE_NAME];
 
@@ -288,6 +339,8 @@ export default class MemosSync extends Plugin {
         throw new Error(error);
       }
     }
+
+    this.debugTest(`获取结果:`, result);
     return result;
   }
 
@@ -295,6 +348,8 @@ export default class MemosSync extends Plugin {
    * 开始同步
    */
   async runSync() {
+    this.debugTest(`开始同步...`);
+
     // 防止快速点击、或手动和自动运行冲突。
     if (this.syncing == true) {
       await sApi.pushMsg("同步中，请稍候...");
@@ -338,7 +393,8 @@ export default class MemosSync extends Plugin {
         return;
       }
       
-      if (!debug){
+      // 关闭调试模式或者在调试模式下允许更新同步时间
+      if ((this.isDebug === sMaps.IS_USE.no) || (this.isDebug === sMaps.IS_USE.yes && this.isUpdateSyncTime === sMaps.IS_USE.yes)){
         // 记录同步时间,间隔1秒
         await setTimeout(async () => {
           let nowTimeText = moment().format(FORMAT.datetime);
@@ -357,6 +413,7 @@ export default class MemosSync extends Plugin {
       throw new Error(error);
     } finally {
       this.syncing = false;
+      this.debugTest(`同步完成！`);
     }
   }
 
@@ -367,6 +424,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async saveToSiyuan(memos, syncMode) {
+    this.debugTest(`正在将数据保存到思源...`);
+
     let addList = memos.addList;
     let deleteList = memos.deleteList;
 
@@ -379,7 +438,6 @@ export default class MemosSync extends Plugin {
     // 数据写入
     if (isDownloaded) {
       if (syncMode === sMaps.SYNC_MAP.block) {
-        // print("写入块...");
         await this.putBlock(memoObjList, relationList, deleteList);
       } else if (syncMode === sMaps.SYNC_MAP.page) {
         await this.putPage(memoObjList, relationList);
@@ -390,6 +448,8 @@ export default class MemosSync extends Plugin {
       }
       return true;
     }
+
+    this.debugTest(`保存完成！`);
   }
 
   // 数据处理
@@ -400,6 +460,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async batchHandleMemos(memos) {
+    this.debugTest(`开始批量处理数据...`);
+
     let memoObjList = [];
     let resouceList = [];
     let relationList = [];
@@ -415,11 +477,15 @@ export default class MemosSync extends Plugin {
       new Map(relationList.map((relation) => [relation.memoId, relation])).values()
     );
 
-    return {
+    let result = {
       memoObjList: memoObjList,
       resouceList: resouceList,
       relationList: relations
-    }
+    };
+      
+    this.debugTest(`处理结果:`, result);
+
+    return result;
   }
 
   /**
@@ -427,6 +493,8 @@ export default class MemosSync extends Plugin {
    * @param memo - 记录
    */
   async handelMemo(memo) {
+    this.debugTest(`正在处理单条数据...`);
+
     // 获取数据
     let memoId = memo.id;
     let contentText = memo.content;
@@ -449,7 +517,7 @@ export default class MemosSync extends Plugin {
     // 文本合并
     let content = `${contentText}\n${resourceLinks}`;
 
-    return {
+    let result = {
       memoId: memoId, // Memos Id
       title: title, // 标题
       content: content, // 内容
@@ -462,6 +530,10 @@ export default class MemosSync extends Plugin {
       dispalyDate: dispalyDate,  // 显示日期
       displayts: memo.displayTs // 显示时间戳
     };
+
+    this.debugTest(`处理结果:`, result);
+
+    return result;
   }
 
   /**
@@ -470,6 +542,8 @@ export default class MemosSync extends Plugin {
    * @returns
    */
   batchHandelResource(resourceList) {
+    this.debugTest(`正在批量处理资源...`);
+
     let resourceLinks = ""; // 所有资源链接
     let imageLinks = "";  // 图片链接
     let resources = [];  // 存放所有非图片的资源
@@ -500,11 +574,16 @@ export default class MemosSync extends Plugin {
         }
       }
     })
-    return {
+
+    let result = {
       resourceLinks: resourceLinks,
       imageLinks: imageLinks,
       resources: resources
     };
+
+    this.debugTest(`处理结果:`, result);
+
+    return result;
   }
 
   /**
@@ -513,6 +592,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   handleResource(resource) {
+    this.debugTest(`正在处理单条资源...`);
+
     let configData = this.data[STORAGE_NAME];
     let videoShowMode = configData.videoShowMode;
 
@@ -552,34 +633,27 @@ export default class MemosSync extends Plugin {
     let mdLink = "";
     if (videoShowMode === sMaps.IS_USE.yes){
       if (resourceTypeText == 'image'){
-        if(debug){
-          print("正在生成图片链接");
-        }
         mdLink = `![${resourceFilename}](${link})`;
       }else if(this.videoFormatList.includes(resourceFormat)){
-        if(debug){
-          print(`正在生成视频链接: ${link}`);
-        }
         mdLink = `<video controls='controls' src='${link}' data-src='${link}' style='width: 1384px; height: 723px;'></video>`
       }else{
-        if(debug){
-          print("正在生成文件链接");
-        }
         mdLink = `[${resourceFilename}](${link})`;
       }
     }else{
       mdLink = (resourceTypeText == 'image') ? `![${resourceFilename}](${link})` : `[${resourceFilename}](${link})`;
     }
     
-    // print('mdLink', mdLink);
-
-    return {
+    let result = {
       mdLink: mdLink,
       downloadLink: downloadLink,
       resourceId: resourceId,
       resourceTypeText: resourceTypeText,
       resourceName: resourceName
     };
+
+    this.debugTest(`单条资源处理结果:`, result);
+
+    return result;
   }
 
   /**
@@ -588,26 +662,19 @@ export default class MemosSync extends Plugin {
    * @returns 处理后的内容
    */
   async handleContent(content){
+    this.debugTest(`正在处理内容...`)
+
     let configData = this.data[STORAGE_NAME]; // 读取配置
     let biDirectionalLinksMode = configData.biDirectionalLinksMode; // 双链标识
 
     if (biDirectionalLinksMode === sMaps.IS_USE.yes){
-      if (debug){
-        print("正在处理双向链接...");
-      }
       content = await this.handleDirectionalLinks(content);
-      if (debug){
-        print("双向链接处理完成！");
-      }
     }
 
-    if (debug){
-      print("正在处理标签...");
-    }
     content = await this.handleTag(content);
-    if (debug){
-      print("标签处理完成！");
-    }
+
+    this.debugTest(`内容处理结果:`, content)
+
     return content;
   }
 
@@ -617,27 +684,36 @@ export default class MemosSync extends Plugin {
    * @returns - 处理后的内容
    */
   async handleDirectionalLinks(content){
+    this.debugTest(`正在处理双向链接...`);
+
     const regex = /(?<=\(\().*?(?=\)\))/g;  // 仅匹配文档名称
     if (regex.test(content)){
       let matchList = content.match(regex);
-      if (debug){
-        print("双向链接正则匹配结果", matchList);
-      }
       for (let documentName of matchList) {
         let documentId = await this.getDocumentIdByName(documentName);
-        if (debug){
-          print("当前使用的文档ID", documentId);
-        }
         content = content.replace(`((${documentName}))`, (match) => `((${documentId} "${match}"))`)
-        if (debug){
-          print("替换后的内容", content);
-        }
       }
     }
-    if (debug){
-      print("替换结果", content);
-    }
+
+    this.debugTest(`双链处理结果:`, content);
     return content;
+  }
+
+  replaceTags(content){
+    const regex = /(?<=#).*?(?=\s|#|$)/g;  // 标签匹配规则
+
+    let configData = this.data[STORAGE_NAME]; // 读取配置
+    let labelName = configData.superLabelText; // 上级标签名称
+
+    let result;
+
+    if (configData.superLabelMode === sMaps.IS_USE.yes) {
+      result = content.replace(regex, (match) => `${labelName}/${match}# `);
+    } else {
+      result = content.replace(regex, (match) => `${match}# `);
+    }
+
+    return result;
   }
 
   /**
@@ -647,17 +723,19 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   handleTag(content) {
-    const regex = /(?<=#).*?(?=\s|#|$)/g;  // 标签匹配规则
-
-    let configData = this.data[STORAGE_NAME]; // 读取配置
-    let labelName = configData.superLabelText;
+    this.debugTest(`正在处理标签...`);
     let result;
 
-    if (configData.superLabelMode === sMaps.IS_USE.yes) {
-      result = content.replace(regex, (match) => `${labelName}/${match}# `);
-    } else {
-      result = content.replace(regex, (match) => `${match}# `);
+    if (this.tagsAreaMode === sMaps.TAGS_AREA.last){
+      let lines = content.split("\n");
+      let lastLine = lines.pop();
+      let rResult = this.replaceTags(lastLine);
+      result = [...lines, rResult].join("\n");
+    }else{
+      result = this.replaceTags(content);
     }
+
+    this.debugTest(`标签处理结果:`, result);
     return result;
   }
 
@@ -669,6 +747,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async resourceDownload(resourceList) {
+    this.debugTest(`正在下载资源到本地...`);
+
     let configData = this.data[STORAGE_NAME]; // 读取配置
     let resourceDownloadMode = configData.resourceDownloadMode;
 
@@ -707,6 +787,9 @@ export default class MemosSync extends Plugin {
       await sApi.pushErrMsg(`plugin-memos-sync: ${error}`);
       throw new Error(error);
     }
+
+    this.debugTest(`资源下载完成！`);
+
     return true;
   }
 
@@ -717,6 +800,8 @@ export default class MemosSync extends Plugin {
    * @param deleteList 
    */
   async putBlock(memoObjList, relationList, deleteList) {
+    this.debugTest(`正在将以块的形式写入思源...`);
+
     let configData = this.data[STORAGE_NAME];
     let notebookId = configData.notebookId; // 笔记本ID
 
@@ -751,6 +836,8 @@ export default class MemosSync extends Plugin {
 
     // 设置块属性
     await this.batchSetBlockAttr(blockIdMaps);
+
+    this.debugTest(`写入完成！`);
   }
 
   /**
@@ -760,6 +847,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async putPage(memoObjList, relationList) {
+    this.debugTest(`正在将以页面的形式写入思源...`);
+
     let configData = this.data[STORAGE_NAME];
     let notebookId = configData.notebookId;
     let pagePath = configData.pagePath;
@@ -805,6 +894,9 @@ export default class MemosSync extends Plugin {
 
     // 引用关联
     await this.relationBlock(relationList, blockIdMaps);
+
+    this.debugTest(`写入完成！`);
+
   }
 
   /**
@@ -815,6 +907,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async putSimplePage(memoObjList, relationList, deleteList) {
+    this.debugTest(`正在将数据保存至单份文档...`);
+
     let configData = this.data[STORAGE_NAME];
     let notebookId = configData.notebookId; // 笔记本ID
     let pagePath = configData.pagePath; // 文档路径
@@ -848,6 +942,8 @@ export default class MemosSync extends Plugin {
 
     // 设置块属性
     await this.batchSetBlockAttr(blockIdMaps);
+
+    this.debugTest(`保存完成！`);
   }
 
   // 数据保存相关工具方法
@@ -859,6 +955,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async batchHandleContentBlock(pageId, memoObjList) {
+    this.debugTest('正在批量将记录添加到块中...');
+
     let blockIdMap = {};
 
     for (let memoObj of memoObjList) {
@@ -872,6 +970,9 @@ export default class MemosSync extends Plugin {
       let blockId = await this.getResponseBlockId(response);
       blockIdMap[memoId] = blockId;
     }
+
+    this.debugTest('memoId:blockId', blockIdMap);
+
     return blockIdMap;
   }
 
@@ -882,6 +983,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async handleContentBlock(pageId, memoObj) {
+    this.debugTest('正在将记录添加到块中...');
+
     let title = memoObj.title;
 
     // 标题写入
@@ -922,6 +1025,8 @@ export default class MemosSync extends Plugin {
       }
     }
 
+    this.debugTest('返回的响应信息:', response);
+
     return response;
   }
 
@@ -932,6 +1037,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async batchSaveToSimplePage(pageId, memoObjList) {
+    this.debugTest('正在批量处理数据，保存至单份文档...');
+
     let blockIdMap = {};
 
     // 获取页面最上级的块ID
@@ -950,10 +1057,6 @@ export default class MemosSync extends Plugin {
       return;
     }
 
-    if (debug){
-      print("parentID", parentID);
-    }
-
     // 循环，将上一次插入的块ID，作为传参
     for (let memoObj of memoObjList) {
       let response = await this.saveToSimplePage(parentID, memoObj);
@@ -966,6 +1069,8 @@ export default class MemosSync extends Plugin {
       parentID = blockId;
       blockIdMap[memoId] = blockId;
     }
+
+    this.debugTest('memoId:blockId', blockIdMap);
     return blockIdMap;
   }
 
@@ -976,6 +1081,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async saveToSimplePage(targetID, memoObj) {
+    this.debugTest('正在将一条记录保存至单份文档...');
+
     // 标题写入
     let title = memoObj.title;
     let contentTitle = `* ${title}`;
@@ -983,10 +1090,6 @@ export default class MemosSync extends Plugin {
     let response = await sApi.insertBlock(contentTitle, {"nextID": targetID});
     if (!sApi.isOK(response)) {
       return;
-    }
-
-    if (debug){
-      print("response", response);
     }
 
     let bid = await this.getResponseBlockId(response);
@@ -1019,6 +1122,8 @@ export default class MemosSync extends Plugin {
       }
     }
 
+    this.debugTest('返回的响应信息:', response);
+
     return response;
   }
 
@@ -1028,6 +1133,8 @@ export default class MemosSync extends Plugin {
    * @param blockIdMaps 
    */
   async relationBlock(relationList, blockIdMaps) {
+    this.debugTest('正在处理引用...');
+
     let configData = this.data[STORAGE_NAME];
     let markMode = configData.markMode;
     let content = "";
@@ -1075,6 +1182,8 @@ export default class MemosSync extends Plugin {
 
       await sApi.appendBlock(useId, content);
     }
+
+    this.debugTest('处理失败的块ID列表:', error_blockIdList);
     return error_blockIdList;
   }
 
@@ -1083,6 +1192,8 @@ export default class MemosSync extends Plugin {
    * @param blockIdMaps 
    */
   async batchSetBlockAttr(blockIdMaps: IBlockIdMaps | {}) {
+    this.debugTest(`正在批量设置块属性...`);
+
     if (isObjectEmpty(blockIdMaps)) {
       return;
     }
@@ -1094,6 +1205,8 @@ export default class MemosSync extends Plugin {
 
       await sApi.setBlockAttrs(blockId, attrs);
     }
+
+    this.debugTest('块属性批量设置完成！');
   }
 
   // 工具方法
@@ -1139,6 +1252,8 @@ export default class MemosSync extends Plugin {
    * @returns 文档路径 null or string
    */
   async getPastDNHPath(notebookId: string, date: string): Promise<string> {
+    this.debugTest('正在获取可读路径...')
+
     let notebookConfResponse = await sApi.getNotebookConf(notebookId);
 
     if (!sApi.isOK(notebookConfResponse)) {
@@ -1161,6 +1276,8 @@ export default class MemosSync extends Plugin {
     }
 
     let hpath = response.data;
+
+    this.debugTest('获取结果:', hpath);
     return hpath;
   }
 
@@ -1171,6 +1288,8 @@ export default class MemosSync extends Plugin {
    * @returns 文档ID
    */
   async getIdByPath(notebookId: string, path: string): Promise<string> {
+    this.debugTest(`正在根据路径获取文档ID...`);
+
     let pageId = "";  // 文档ID
 
     let response = await sApi.getIDsByHPath(notebookId, path);
@@ -1189,6 +1308,8 @@ export default class MemosSync extends Plugin {
     } else {
       pageId = IDs[0];
     }
+
+    this.debugTest('获取结果:', pageId);
     return pageId;
   }
 
@@ -1199,13 +1320,18 @@ export default class MemosSync extends Plugin {
    * @returns 文档ID null or string
    */
   async searchDailyNote(notebookId: string, date: string): Promise<string> {
+    this.debugTest(`正在根据日期查询是否存在该日的Daily Note文档ID...`);
+
     // 获取可读路径
     let hpath = await this.getPastDNHPath(notebookId, date);
     if (!hpath) {
       return;
     }
 
-    return await this.getIdByPath(notebookId, hpath);
+    let result = await this.getIdByPath(notebookId, hpath)
+
+    this.debugTest('查询结果:', result);
+    return result;
   }
 
   /**
@@ -1214,11 +1340,15 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async batchGetAttrByMemosId(memosIdList) {
+    this.debugTest(`正在根据memosId批量获取对应的块Id...`);
+
     let result = [];
     for (let memosId of memosIdList) {
       let attrList = await this.getAttrByMemosId(memosId);
       result = result.concat(attrList);
     }
+
+    this.debugTest('获取结果:', result);
     return result;
   }
 
@@ -1228,12 +1358,17 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async getDelBlockIdList(deleteList) {
+      this.debugTest(`正在获取需要删除的块ID...`);
+
     let delMemosIdList = await getAttrList(deleteList, 'id'); // 提取需要删除的 memosId
     let delBlockList = await this.batchGetAttrByMemosId(delMemosIdList); // 通过 memosId 批量获取需要被删除的块
     let delBlockIdList = [];
     if (delBlockList.length !== 0) {
       delBlockIdList = await getAttrList(delBlockList, 'block_id'); // 提取需要删除 blockId
     }
+
+    this.debugTest('获取结果:', delBlockIdList);
+
     return delBlockIdList;
   }
 
@@ -1243,6 +1378,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async batchDeleteBlock(idList) {
+    this.debugTest(`正在批量删除块...`);
+
     let delErrorList = [];
     for (let id of idList) {
       let response = await sApi.deleteBlock(id);
@@ -1255,6 +1392,9 @@ export default class MemosSync extends Plugin {
         continue;
       }
     }
+
+    this.debugTest('删除失败的块ID列表:', delErrorList);
+
     return delErrorList;
   }
 
@@ -1263,6 +1403,8 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async getBlockIdMaps() {
+    this.debugTest(`正在获取当前的memos-block映射表...`);
+
     let result = {};
     let attrs = await this.getAttrAllMemos();
     for (let attr of attrs) {
@@ -1270,6 +1412,9 @@ export default class MemosSync extends Plugin {
       let blockId = attr.block_id;
       result[memosId] = blockId;
     }
+
+    this.debugTest('获取结果:', result);
+
     return result;
   }
 
@@ -1280,6 +1425,8 @@ export default class MemosSync extends Plugin {
    * @returns null or maps
    */
   async groupListByDate(dataList, key: string, isTimestamp = false) {
+    this.debugTest(`正在将列表根据日期分组...`);
+
     if (dataList.length === 0 || !(key in dataList[0])) {
       throw new Error(`${key} 不存在！`);
     }
@@ -1297,6 +1444,8 @@ export default class MemosSync extends Plugin {
       return result;
     }, {});
 
+    this.debugTest('分组结果:', groupedData);
+
     return groupedData;
   }
 
@@ -1306,9 +1455,14 @@ export default class MemosSync extends Plugin {
    * @returns {string}
    */
   async getResponseBlockId(response) {
+    this.debugTest(`正在从响应信息中获取块ID...`);
+
     let reponseData = response.data;
     let doOperations = reponseData[0].doOperations;
     let blockId = doOperations[0].id;
+
+    this.debugTest('获取结果:', blockId);
+
     return blockId;
   }
 
@@ -1317,8 +1471,13 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async getAttrAllMemos() {
+    this.debugTest(`正在查询所有包含custom-memo-id数据...`);
+
     let sql = `SELECT * FROM attributes WHERE name='custom-memo-id';`
     let response = await sApi.querySql(sql);
+
+    this.debugTest('查询结果:', response.data);
+
     return response.data;
   }
 
@@ -1328,8 +1487,13 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async getAttrByMemosId(memosId) {
+    this.debugTest(`正在根据memosId查询对应的块...`);
+
     let sql = `SELECT * FROM attributes WHERE name='custom-memo-id' AND value='${memosId}';`
     let response = await sApi.querySql(sql);
+
+    this.debugTest('查询结果:', response.data);
+
     return response.data;
   }
 
@@ -1339,8 +1503,13 @@ export default class MemosSync extends Plugin {
    * @returns 
    */
   async getBlockContentById(blockId) {
+    this.debugTest(`正在根据块id查询块...`);
+
     let sql = `SELECT * FROM blocks WHERE id="${blockId}";`
     let response = await sApi.querySql(sql);
+
+    this.debugTest('查询结果:', response.data);
+
     return response.data;
   }
 
@@ -1350,21 +1519,23 @@ export default class MemosSync extends Plugin {
    * @returns 文档块ID
    */
   async getDocumentIdByName(documentName){
+    this.debugTest(`正在根据文档块名称获取文档块ID...`);
+
     let configData = this.data[STORAGE_NAME]; // 读取配置
     let notebookId = configData.notebookId;
     let subjectPath = configData.subjectPath;
     let documentBlockId;
 
     let documentBlockList = await this.getBlockByDocumentName(documentName);
-    if (debug){
-      print("文档块查询结果", documentBlockList);
-    }
     if (documentBlockList !== null && documentBlockList.length > 0){
       documentBlockId = documentBlockList[0].id;
     }else{
       let path = `${subjectPath}/${documentName}`;
       documentBlockId = await this.getIdByPath(notebookId, path);  
     }
+
+    this.debugTest('获取结果:', documentBlockId);
+
     return documentBlockId
   }
 
@@ -1373,8 +1544,12 @@ export default class MemosSync extends Plugin {
    * @param name - 名称
    */
   async getBlockByDocumentName(name){
+    this.debugTest(`正在根据文档名称查询文档块...`);
+    
     let sql = `SELECT * FROM blocks WHERE content=${name} && type='d';`
     let response = await sApi.querySql(sql);
+
+    this.debugTest('查询结果:', response.data);
     return response.data;
   }
 
@@ -1410,6 +1585,7 @@ export default class MemosSync extends Plugin {
     let syncModeElement;  //同步保存方案
     let notebookIdElement;  // 选择笔记本
     let pagePathElement = document.createElement('input');  // 文档路径
+
     let markModeElement;  // 引用处理方案
     let biDirectionalLinksModeElement;  // 双向链接符号标识
     let subjectPathElement = document.createElement('input');  // 用于主题的保存路径
@@ -1419,6 +1595,11 @@ export default class MemosSync extends Plugin {
     let resourceDownloadModeElement; // 资源下载模式
     let videoShowModeElement; // 视频显示方式
     let videoFormatTextElement = document.createElement('textarea');  // 优化的视频格式
+
+    let tagsAreaElement; // 标签匹配范围
+
+    let debugModeElement; // 调试模式
+    let updateSyncTimeElement; // 是否更新上次同步时间
 
     this.setting = new Setting({
       // 配置窗口大小
@@ -1437,8 +1618,10 @@ export default class MemosSync extends Plugin {
           biDirectionalLinksModeElement.value, // 是否识别双向链接
           imageLayoutElement.value, // 图片布局
           superLabelModeElement.value,  // 是否收束标签
+          tagsAreaElement.value, // 标签匹配范围
           resourceDownloadModeElement.value,  // 资源下载模式
-          videoShowModeElement.value  // 视频显示方式
+          videoShowModeElement.value,  // 视频显示方式
+          debugModeElement.value // 调试模式
         ]
 
         for (let required of requiredList) {
@@ -1464,17 +1647,16 @@ export default class MemosSync extends Plugin {
           }
         }
 
-        // 识别双向链接时，需校验主题路径是否填写
-        // if (biDirectionalLinksModeElement.value === sMaps.IS_USE.yes){
-        //   if (!subjectPathElement.value){
-        //     await sApi.pushErrMsg("请确认必填项是否全部配置！")
-        //     return;
-        //   }
-        // }
-
         // 
         if (videoShowModeElement.value === sMaps.IS_USE.yes){
           if (!videoFormatTextElement.value){
+            await sApi.pushErrMsg("请确认必填项是否全部配置！")
+            return;
+          }
+        }
+
+        if (debugModeElement.value === sMaps.IS_USE.yes){
+          if (!updateSyncTimeElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
             return;
           }
@@ -1498,11 +1680,16 @@ export default class MemosSync extends Plugin {
         configData.subjectPath = subjectPathElement.value;
         configData.videoShowMode = videoShowModeElement.value;
         configData.videoFormatText = videoFormatTextElement.value;
+        configData.debugMode = debugModeElement.value;
+        configData.updateSyncTime = updateSyncTimeElement.value;
+        configData.tagsArea = tagsAreaElement.value;
 
         await this.saveData(STORAGE_NAME, configData);
 
         // 生成Memos对象
         this.memosService = new mApi(configData.baseUrl, configData.accessToken);
+
+        await this.updateClassValue(configData);
       }
     });
 
@@ -1734,6 +1921,34 @@ export default class MemosSync extends Plugin {
       }
     });
 
+    // 标签匹配区域
+    this.setting.addItem({
+      title: "标签匹配范围",
+      description: "在全文或者最后一行匹配标签",
+      createActionElement: () => {
+        tagsAreaElement = document.createElement('select')
+        tagsAreaElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.TAGS_AREA.full,
+            text: "全文"
+          },
+          {
+            val: sMaps.TAGS_AREA.last,
+            text: "最后一行"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          tagsAreaElement.appendChild(optionElement);
+        }
+        tagsAreaElement.value = this.data[STORAGE_NAME].tagsArea;
+        return tagsAreaElement;
+      },
+    });
+
     // 图片布局处理方案
     this.setting.addItem({
       title: "图片块布局",
@@ -1826,6 +2041,67 @@ export default class MemosSync extends Plugin {
         videoFormatTextElement.className = "b3-text-field fn__block fn__testarea";
         videoFormatTextElement.value = this.data[STORAGE_NAME].videoFormatText;
         return videoFormatTextElement;
+      },
+    });
+
+    // 调试设置
+    this.setting.addItem({
+      title: "<div align='center'><font size='4' color='#6950a1'>✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦&nbsp;&nbsp;开发模式&nbsp;&nbsp;✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦</font></div>",
+    });
+
+    // 调试模式
+    this.setting.addItem({
+      title: "开启调试",
+      description: "在控制台显示操作日志",
+      createActionElement: () => {
+        debugModeElement = document.createElement('select')
+        debugModeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.IS_USE.no,
+            text: "否"
+          },
+          {
+            val: sMaps.IS_USE.yes,
+            text: "是"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          debugModeElement.appendChild(optionElement);
+        }
+        debugModeElement.value = this.data[STORAGE_NAME].debugMode;
+        return debugModeElement;
+      },
+    });
+
+    // 是否更新上次同步时间
+    this.setting.addItem({
+      title: "是否更新上次同步时间",
+      description: "禁用后将不会自动更新同步时间，仅在调试模式下有效",
+      createActionElement: () => {
+        updateSyncTimeElement = document.createElement('select')
+        updateSyncTimeElement.className = "b3-select fn__flex-center fn__size200";
+        let options = [
+          {
+            val: sMaps.IS_USE.no,
+            text: "否"
+          },
+          {
+            val: sMaps.IS_USE.yes,
+            text: "是"
+          }
+        ]
+        for (let option of options) {
+          let optionElement = document.createElement('option');
+          optionElement.value = option.val;
+          optionElement.text = option.text;
+          updateSyncTimeElement.appendChild(optionElement);
+        }
+        updateSyncTimeElement.value = this.data[STORAGE_NAME].updateSyncTime;
+        return updateSyncTimeElement;
       },
     });
 
