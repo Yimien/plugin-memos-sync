@@ -101,4 +101,13 @@ export class MemosApi {
     async downloadResourceByName(name){
       return await this.fetchGet(`/o/r/${name}`);
     }
+
+    /**
+     * 根据UID下载资源
+     * @param id - 资源ID
+     * @returns 
+     */
+    async downloadResourceByUid(uId){
+      return await this.fetchGet(`/o/r/${uId}`);
+    }
   }

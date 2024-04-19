@@ -605,6 +605,7 @@ export default class MemosSync extends Plugin {
     let resourceFilename = resource.filename; // 资源文件名称
     let resourceName = resource.name; // 资源名称
     let resourceId = resource.id; // 资源ID
+    let resourceUid = resource.uid; // 资源UID
 
     // 变量定义
     let link: string;
@@ -647,6 +648,7 @@ export default class MemosSync extends Plugin {
       mdLink: mdLink,
       downloadLink: downloadLink,
       resourceId: resourceId,
+      resourceUid: resourceUid,
       resourceTypeText: resourceTypeText,
       resourceName: resourceName
     };
@@ -774,7 +776,11 @@ export default class MemosSync extends Plugin {
         } else if (resourceDownloadMode === sMaps.RESOURCE_DOWNLOAD_MODE.second) {
           let resourceName = res.resourceName;
           response = await this.memosService.downloadResourceByName(resourceName);
-        } else {
+        } else if (resourceDownloadMode === sMaps.RESOURCE_DOWNLOAD_MODE.third) {
+          let resourceUid = res.resourceUid;
+          response = await this.memosService.downloadResourceByName(resourceUid);
+        }
+        else {
           return;
         }
 
@@ -1980,18 +1986,22 @@ export default class MemosSync extends Plugin {
     // 资源下载方式
     this.setting.addItem({
       title: "资源下载模式",
-      description: "当资源（图片）无法正确显示或下载时请选择使用第二种模式",
+      description: "当资源（图片）无法正确显示或下载时请选择切换其它模式",
       createActionElement: () => {
         resourceDownloadModeElement = document.createElement('select')
         resourceDownloadModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
             val: sMaps.RESOURCE_DOWNLOAD_MODE.first,
-            text: "第一种"
+            text: "根据资源id"
           },
           {
             val: sMaps.RESOURCE_DOWNLOAD_MODE.second,
-            text: "第二种"
+            text: "根据资源名称"
+          },
+          {
+            val: sMaps.RESOURCE_DOWNLOAD_MODE.third,
+            text: "根据资源uid"
           }
         ]
         for (let option of options) {

@@ -27,7 +27,8 @@ export const sMaps = {
     //
     RESOURCE_DOWNLOAD_MODE: {
         first: '1',
-        second: '2'
+        second: '2',
+        third: '3'
     },
 
     // 标签匹配范围
