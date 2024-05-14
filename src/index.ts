@@ -19,7 +19,7 @@ let onSyncEndEvent: EventListener;
 
 export default class MemosSync extends Plugin {
   private isMobile: boolean;
-  private siyuanStorage;
+  // private siyuanStorage;
   private topBarElement;
   private syncing: boolean = false;
   private memosService;
@@ -258,7 +258,7 @@ export default class MemosSync extends Plugin {
    * 处理监听同步事件
    * @param detail 
    */
-  async eventBusHandler(detail) {
+  async eventBusHandler() {
     await this.checkNew(); // 检查 Memos 是否有新数据
   }
 
@@ -1563,8 +1563,8 @@ export default class MemosSync extends Plugin {
 
   async onload() {
     // 获取本地配置
-    let conResponse = await sApi.getLocalStorage();
-    this.siyuanStorage = conResponse["data"];
+    // let conResponse = await sApi.getLocalStorage();
+    // this.siyuanStorage = conResponse["data"];
 
     // 初始化配置
     await this.initData();
@@ -1702,6 +1702,7 @@ export default class MemosSync extends Plugin {
     // 基础设置
     this.setting.addItem({
       title: "<div align='center'><font size='4' color='#6950a1'>✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦&nbsp;&nbsp;基础设置&nbsp;&nbsp;✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦</font></div>",
+      direction: "row"
     });
 
     // 添加校验按钮
@@ -1819,6 +1820,7 @@ export default class MemosSync extends Plugin {
     // 高级设置
     this.setting.addItem({
       title: "<div align='center'><font size='4' color='#6950a1'>✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦&nbsp;&nbsp;高级设置&nbsp;&nbsp;✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦</font></div>",
+      direction: "row"
     });
 
     // 识别双链符号控件
@@ -2046,9 +2048,10 @@ export default class MemosSync extends Plugin {
     // 支持优化的视频格式
     this.setting.addItem({
       title: "优化的视频格式",
+      direction: "row",
       description: "需要优化的视频格式，用';'分隔<br><font color='red'>请注意：当需要优化视频样式时，此项必填</fonts>",
       createActionElement: () => {
-        videoFormatTextElement.className = "b3-text-field fn__block fn__testarea";
+        videoFormatTextElement.className = "b3-text-field fn__block";
         videoFormatTextElement.value = this.data[STORAGE_NAME].videoFormatText;
         return videoFormatTextElement;
       },
@@ -2057,6 +2060,7 @@ export default class MemosSync extends Plugin {
     // 调试设置
     this.setting.addItem({
       title: "<div align='center'><font size='4' color='#6950a1'>✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦&nbsp;&nbsp;开发模式&nbsp;&nbsp;✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦</font></div>",
+      direction: "row"
     });
 
     // 调试模式
@@ -2114,7 +2118,6 @@ export default class MemosSync extends Plugin {
         return updateSyncTimeElement;
       },
     });
-
 
     await this.checkNew();  // 检查是否有新数据
   }
