@@ -6,7 +6,7 @@ import {
 /**
  * 思源API
  */
-export class SiyuanApi {
+export class SiyuanServer {
     /**
      * 获取持久化的本地存储数据
      * @returns 

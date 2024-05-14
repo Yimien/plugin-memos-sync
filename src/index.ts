@@ -1,8 +1,8 @@
-import { SiyuanApi as sApi } from './apis/siyuanApi';
-import { MemosApi as mApi } from './apis/memosApi';
-import { print, getAttrList, getSvgHtml, isObjectEmpty } from "./utils";
-import { IGroupedData } from './interface';
-import { sMaps } from './constant';
+import { SiyuanServer as sApi } from './server/siyuan';
+import { MemosServer as mApi } from './server/memos';
+import { print, getAttrList, getSvgHtml, isObjectEmpty } from "./utils/index";
+import { IGroupedData, IBlockIdMaps } from './interfaces';
+import { configMaps } from './constants/maps';
 import { Plugin, Setting, getFrontend } from "siyuan";
 import "@/index.scss";
 import moment from "moment";
@@ -30,7 +30,7 @@ export default class MemosSync extends Plugin {
   private tagsAreaMode;
 
   async debugTest(...args){
-    if (this.isDebug === sMaps.IS_USE.yes){
+    if (this.isDebug === configMaps.IS_USE.yes){
       print(...args);
     }
   }
@@ -66,18 +66,18 @@ export default class MemosSync extends Plugin {
       syncMode: "",
       notebookId: "",
       pagePath: "",
-      markMode: sMaps.MARK_MAP.blockRef,
-      imageLayout: sMaps.IMAGE_LAYOUT.direction,
-      superLabelMode: sMaps.IS_USE.no,
+      markMode: configMaps.MARK_MAP.blockRef,
+      imageLayout: configMaps.IMAGE_LAYOUT.direction,
+      superLabelMode: configMaps.IS_USE.no,
       superLabelText: "",
-      resourceDownloadMode: sMaps.RESOURCE_DOWNLOAD_MODE.second,
-      biDirectionalLinksMode: sMaps.IS_USE.no,
+      resourceDownloadMode: configMaps.RESOURCE_DOWNLOAD_MODE.second,
+      biDirectionalLinksMode: configMaps.IS_USE.no,
       subjectPath: "",
-      videoShowMode: sMaps.IS_USE.yes,
+      videoShowMode: configMaps.IS_USE.yes,
       videoFormatText: "mp4",
-      debugMode: sMaps.IS_USE.no,
-      updateSyncTime: sMaps.IS_USE.no,
-      tagsArea: sMaps.TAGS_AREA.last
+      debugMode: configMaps.IS_USE.no,
+      updateSyncTime: configMaps.IS_USE.no,
+      tagsArea: configMaps.TAGS_AREA.last
     }
 
     let configData = this.data[STORAGE_NAME];
@@ -129,7 +129,7 @@ export default class MemosSync extends Plugin {
     }
 
     // 同步至单份文档时，需校验文档路径是否填写
-    if (configData.syncMode === sMaps.SYNC_MAP.simple){
+    if (configData.syncMode === configMaps.SYNC_MAP.simple){
       if (!configData.pagePath){
         await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return;
@@ -137,7 +137,7 @@ export default class MemosSync extends Plugin {
     }
 
     // 收束标签时，需校验标签名称是否填写
-    if (configData.superLabelMode === sMaps.IS_USE.yes) {
+    if (configData.superLabelMode === configMaps.IS_USE.yes) {
       if (!configData.superLabelText) {
         await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return false;
@@ -145,14 +145,14 @@ export default class MemosSync extends Plugin {
     }
 
     // 优化视频样式时，需校验视频格式是否填写
-    if (configData.videoShowMode === sMaps.IS_USE.yes){
+    if (configData.videoShowMode === configMaps.IS_USE.yes){
       if (!configData.videoFormatText) {
         await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return false;
       }
     }
 
-    if (configData.debugMode === sMaps.IS_USE.yes){
+    if (configData.debugMode === configMaps.IS_USE.yes){
       if (!configData.updateSyncTime){
         await sApi.pushErrMsg("请检查设置必填项是否全部配置！")
         return false;
@@ -394,7 +394,7 @@ export default class MemosSync extends Plugin {
       }
       
       // 关闭调试模式或者在调试模式下允许更新同步时间
-      if ((this.isDebug === sMaps.IS_USE.no) || (this.isDebug === sMaps.IS_USE.yes && this.isUpdateSyncTime === sMaps.IS_USE.yes)){
+      if ((this.isDebug === configMaps.IS_USE.no) || (this.isDebug === configMaps.IS_USE.yes && this.isUpdateSyncTime === configMaps.IS_USE.yes)){
         // 记录同步时间,间隔1秒
         await setTimeout(async () => {
           let nowTimeText = moment().format(FORMAT.datetime);
@@ -437,11 +437,11 @@ export default class MemosSync extends Plugin {
 
     // 数据写入
     if (isDownloaded) {
-      if (syncMode === sMaps.SYNC_MAP.block) {
+      if (syncMode === configMaps.SYNC_MAP.block) {
         await this.putBlock(memoObjList, relationList, deleteList);
-      } else if (syncMode === sMaps.SYNC_MAP.page) {
+      } else if (syncMode === configMaps.SYNC_MAP.page) {
         await this.putPage(memoObjList, relationList);
-      } else if (syncMode === sMaps.SYNC_MAP.simple) {
+      } else if (syncMode === configMaps.SYNC_MAP.simple) {
         await this.putSimplePage(memoObjList, relationList, deleteList);
       } else {
         return false;
@@ -560,7 +560,7 @@ export default class MemosSync extends Plugin {
         // 针对保存到块的处理
         if (resourceTypeText == "image") {
           imageLinks += `${mdLink}`;
-          if (imageLayout === sMaps.IMAGE_LAYOUT.direction && (resource !== resourceList[resourceList.length - 1])) {
+          if (imageLayout === configMaps.IMAGE_LAYOUT.direction && (resource !== resourceList[resourceList.length - 1])) {
             imageLinks += "\n";
           }
         } else {
@@ -632,7 +632,7 @@ export default class MemosSync extends Plugin {
 
     // 生成符合MD格式的文本
     let mdLink = "";
-    if (videoShowMode === sMaps.IS_USE.yes){
+    if (videoShowMode === configMaps.IS_USE.yes){
       if (resourceTypeText == 'image'){
         mdLink = `![${resourceFilename}](${link})`;
       }else if(this.videoFormatList.includes(resourceFormat)){
@@ -669,7 +669,7 @@ export default class MemosSync extends Plugin {
     let configData = this.data[STORAGE_NAME]; // 读取配置
     let biDirectionalLinksMode = configData.biDirectionalLinksMode; // 双链标识
 
-    if (biDirectionalLinksMode === sMaps.IS_USE.yes){
+    if (biDirectionalLinksMode === configMaps.IS_USE.yes){
       content = await this.handleDirectionalLinks(content);
     }
 
@@ -709,7 +709,7 @@ export default class MemosSync extends Plugin {
 
     let result;
 
-    if (configData.superLabelMode === sMaps.IS_USE.yes) {
+    if (configData.superLabelMode === configMaps.IS_USE.yes) {
       result = content.replace(regex, (match) => `${labelName}/${match}# `);
     } else {
       result = content.replace(regex, (match) => `${match}# `);
@@ -728,7 +728,7 @@ export default class MemosSync extends Plugin {
     this.debugTest(`正在处理标签...`);
     let result;
 
-    if (this.tagsAreaMode === sMaps.TAGS_AREA.last){
+    if (this.tagsAreaMode === configMaps.TAGS_AREA.last){
       let lines = content.split("\n");
       let lastLine = lines.pop();
       let rResult = this.replaceTags(lastLine);
@@ -770,13 +770,13 @@ export default class MemosSync extends Plugin {
 
         // 获取资源文件
         let response;
-        if (resourceDownloadMode === sMaps.RESOURCE_DOWNLOAD_MODE.first) {
+        if (resourceDownloadMode === configMaps.RESOURCE_DOWNLOAD_MODE.first) {
           let resourceId = res.resourceId;
           response = await this.memosService.downloadResourceById(resourceId);
-        } else if (resourceDownloadMode === sMaps.RESOURCE_DOWNLOAD_MODE.second) {
+        } else if (resourceDownloadMode === configMaps.RESOURCE_DOWNLOAD_MODE.second) {
           let resourceName = res.resourceName;
           response = await this.memosService.downloadResourceByName(resourceName);
-        } else if (resourceDownloadMode === sMaps.RESOURCE_DOWNLOAD_MODE.third) {
+        } else if (resourceDownloadMode === configMaps.RESOURCE_DOWNLOAD_MODE.third) {
           let resourceUid = res.resourceUid;
           response = await this.memosService.downloadResourceByName(resourceUid);
         }
@@ -1168,7 +1168,7 @@ export default class MemosSync extends Plugin {
 
       let useId = blockId;
 
-      if (syncMode === sMaps.SYNC_MAP.block) {
+      if (syncMode === configMaps.SYNC_MAP.block) {
         let response = await sApi.getChildBlocks(blockId);
 
         if (!sApi.isOK(response)) {
@@ -1178,9 +1178,9 @@ export default class MemosSync extends Plugin {
         useId = childId;
       }
 
-      if (markMode === sMaps.MARK_MAP.blockEmbed) {
+      if (markMode === configMaps.MARK_MAP.blockEmbed) {
         content = `{{select * from blocks where id="${relatedBlockId}"}}`;
-      } else if (markMode === sMaps.MARK_MAP.blockRef) {
+      } else if (markMode === configMaps.MARK_MAP.blockRef) {
         content = `((${relatedBlockId} "@${relatedMemoId}"))`;
       } else {
         return;
@@ -1638,7 +1638,7 @@ export default class MemosSync extends Plugin {
         }
 
         // 同步至单份文档时，需校验文档路径是否填写
-        if (syncModeElement.value === sMaps.SYNC_MAP.simple){
+        if (syncModeElement.value === configMaps.SYNC_MAP.simple){
           if (!pagePathElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
             return;
@@ -1646,7 +1646,7 @@ export default class MemosSync extends Plugin {
         }
 
         // 收束标签时，需校验标签名称是否填写
-        if (superLabelModeElement.value === sMaps.IS_USE.yes) {
+        if (superLabelModeElement.value === configMaps.IS_USE.yes) {
           if (!superLabelTextElement.value) {
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
             return;
@@ -1654,14 +1654,14 @@ export default class MemosSync extends Plugin {
         }
 
         // 
-        if (videoShowModeElement.value === sMaps.IS_USE.yes){
+        if (videoShowModeElement.value === configMaps.IS_USE.yes){
           if (!videoFormatTextElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
             return;
           }
         }
 
-        if (debugModeElement.value === sMaps.IS_USE.yes){
+        if (debugModeElement.value === configMaps.IS_USE.yes){
           if (!updateSyncTimeElement.value){
             await sApi.pushErrMsg("请确认必填项是否全部配置！")
             return;
@@ -1762,15 +1762,15 @@ export default class MemosSync extends Plugin {
         syncModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            value: sMaps.SYNC_MAP.block,
+            value: configMaps.SYNC_MAP.block,
             text: "同步至 Daily Notes"
           },
           {
-            value: sMaps.SYNC_MAP.page,
+            value: configMaps.SYNC_MAP.page,
             text: "同步至笔记本或文档下"
           },
           {
-            value: sMaps.SYNC_MAP.simple,
+            value: configMaps.SYNC_MAP.simple,
             text: "同步至单份文档中"
           }
         ]
@@ -1830,11 +1830,11 @@ export default class MemosSync extends Plugin {
         biDirectionalLinksModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.IS_USE.no,
+            val: configMaps.IS_USE.no,
             text: "否"
           },
           {
-            val: sMaps.IS_USE.yes,
+            val: configMaps.IS_USE.yes,
             text: "是"
           }
         ]
@@ -1869,11 +1869,11 @@ export default class MemosSync extends Plugin {
         superLabelModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.IS_USE.no,
+            val: configMaps.IS_USE.no,
             text: "否"
           },
           {
-            val: sMaps.IS_USE.yes,
+            val: configMaps.IS_USE.yes,
             text: "是"
           }
         ]
@@ -1908,11 +1908,11 @@ export default class MemosSync extends Plugin {
         markModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.MARK_MAP.blockRef,
+            val: configMaps.MARK_MAP.blockRef,
             text: "引用块"
           },
           {
-            val: sMaps.MARK_MAP.blockEmbed,
+            val: configMaps.MARK_MAP.blockEmbed,
             text: "嵌入块"
           }
         ]
@@ -1936,11 +1936,11 @@ export default class MemosSync extends Plugin {
         tagsAreaElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.TAGS_AREA.full,
+            val: configMaps.TAGS_AREA.full,
             text: "全文"
           },
           {
-            val: sMaps.TAGS_AREA.last,
+            val: configMaps.TAGS_AREA.last,
             text: "最后一行"
           }
         ]
@@ -1964,11 +1964,11 @@ export default class MemosSync extends Plugin {
         imageLayoutElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.IMAGE_LAYOUT.direction,
+            val: configMaps.IMAGE_LAYOUT.direction,
             text: "纵向布局"
           },
           {
-            val: sMaps.IMAGE_LAYOUT.transverse,
+            val: configMaps.IMAGE_LAYOUT.transverse,
             text: "横向布局"
           }
         ]
@@ -1992,15 +1992,15 @@ export default class MemosSync extends Plugin {
         resourceDownloadModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.RESOURCE_DOWNLOAD_MODE.first,
+            val: configMaps.RESOURCE_DOWNLOAD_MODE.first,
             text: "根据资源id"
           },
           {
-            val: sMaps.RESOURCE_DOWNLOAD_MODE.second,
+            val: configMaps.RESOURCE_DOWNLOAD_MODE.second,
             text: "根据资源名称"
           },
           {
-            val: sMaps.RESOURCE_DOWNLOAD_MODE.third,
+            val: configMaps.RESOURCE_DOWNLOAD_MODE.third,
             text: "根据资源uid"
           }
         ]
@@ -2024,11 +2024,11 @@ export default class MemosSync extends Plugin {
         videoShowModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.IS_USE.no,
+            val: configMaps.IS_USE.no,
             text: "否"
           },
           {
-            val: sMaps.IS_USE.yes,
+            val: configMaps.IS_USE.yes,
             text: "是"
           }
         ]
@@ -2068,11 +2068,11 @@ export default class MemosSync extends Plugin {
         debugModeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.IS_USE.no,
+            val: configMaps.IS_USE.no,
             text: "否"
           },
           {
-            val: sMaps.IS_USE.yes,
+            val: configMaps.IS_USE.yes,
             text: "是"
           }
         ]
@@ -2096,11 +2096,11 @@ export default class MemosSync extends Plugin {
         updateSyncTimeElement.className = "b3-select fn__flex-center fn__size200";
         let options = [
           {
-            val: sMaps.IS_USE.no,
+            val: configMaps.IS_USE.no,
             text: "否"
           },
           {
-            val: sMaps.IS_USE.yes,
+            val: configMaps.IS_USE.yes,
             text: "是"
           }
         ]

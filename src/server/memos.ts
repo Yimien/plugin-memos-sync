@@ -1,7 +1,7 @@
 /**
  * Memos API
  */
-export class MemosApi {
+export class MemosServer {
     private baseUrl: string;
     private accessToken: string;
     private headers;

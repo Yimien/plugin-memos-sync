@@ -1,4 +1,4 @@
-export const sMaps = {
+export const configMaps = {
     // 是否使用
     IS_USE: {
         no: '0',
