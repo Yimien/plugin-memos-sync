@@ -23,4 +23,4 @@
 
 ### 特别感谢
 
-本项目使用了 [frostime](https://github.com/frostime) 大佬提供的 [plugin-sample-vite](https://github.com/frostime/plugin-sample-vite) 模板仓库，在开发时很大程度参考了 [winter60](https://github.com/winter60) 大佬的 [winter60/plugin-flomo-sync: 用于导入flomo到思源 (github.com)](https://github.com/winter60/plugin-flomo-sync) 项目，同时还要感谢各位开源代码的大佬。
+本项目使用了 [frostime](https://github.com/frostime) 大佬提供的 [plugin-sample-vite](https://github.com/frostime/plugin-sample-vite) 模板仓库，在开发时很大程度参考了 [winter60](https://github.com/winter60) 大佬的 [winter60/plugin-flomo-sync: 用于导入flomo到思源 (github.com)](https://github.com/winter60/plugin-flomo-sync) 项目，同时还要感谢各位开源代码的大佬和群内提供帮助的各位大大。
