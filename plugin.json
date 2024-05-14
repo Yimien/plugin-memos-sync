@@ -2,13 +2,16 @@
   "name": "plugin-memos-sync",
   "author": "Yimien",
   "url": "https://github.com/Yimien/plugin-memos-sync",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "minAppVersion": "2.11.3",
   "backends": [
-    "all"
+    "windows",
+    "docker"
   ],
   "frontends": [
-    "all"
+    "desktop",
+    "desktop-window",
+    "browser-desktop"
   ],
   "displayName": {
     "en_US": "Memos Sync",
